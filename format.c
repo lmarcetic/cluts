@@ -4,9 +4,10 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <string.h>
+#include <locale.h>
 
 /**
- ** \file depends: fprintf, strerror, malloc
+ ** \file depends: fprintf, strerror, malloc, setlocale
  ** \author Luka Marčetić, 2011
  **/
 
@@ -28,6 +29,7 @@ static char* e_name(int error);
  **/
 int main()
 {
+    setlocale(LC_NUMERIC, "POSIX");
     unsigned int i, j;
     int *ip;
     //note that given a sufficiently large base, x=34 and z=36
@@ -60,6 +62,35 @@ int main()
         {"0x+1", seq_x(0,33, sixteen),  0,      0},
         {"0x-1", seq_x(0,33, sixteen),  0,      0}
     };
+    const struct strto_tests dt[] = {
+        //nptr   (bases) result    error
+        {"0x.1",  NULL,  0.062500, 0},
+        {".10x1", NULL,    0.1,    0},
+        //a 'non-empty sequence' missing before E/P:
+        {"e1",    NULL,    0,      EINVAL},
+        {"E1",    NULL,    0,      EINVAL},
+        {"p1",    NULL,    0,      EINVAL},
+        {"P1",    NULL,    0,      EINVAL},
+        //missing exponent (+/- optional, the rest isn't):
+        {"1e",    NULL,    0,      EINVAL},
+        {"1E",    NULL,    0,      EINVAL},
+        {"0x1p",  NULL,    0,      EINVAL},
+        {"0x1P",  NULL,    0,      EINVAL},
+        
+        {"1e+",   NULL,    0,      EINVAL},
+        {"1E+",   NULL,    0,      EINVAL},
+        {"0x1p+", NULL,    0,      EINVAL},
+        {"0x1P+", NULL,    0,      EINVAL},
+        {"1e-",   NULL,    0,      EINVAL},
+        {"1E-",   NULL,    0,      EINVAL},
+        {"0x1p-", NULL,    0,      EINVAL},
+        {"0x1P-", NULL,    0,      EINVAL},
+        //'optional' does not make invalid, also x^0=1 o.O
+        {"2e+0",  NULL,    1,      0},
+        {"2E+0",  NULL,    1,      0},
+        {"2e-0",  NULL,    1,      0},
+        {"2E-0",  NULL,    1,      0}
+    };
     for (i=0; i<sizeof(t)/sizeof(struct strto_tests); ++i) { //nr of nptrs
         for (j=0; j<9; ++j) {                                //nr of functions
             if (j<6) {
@@ -67,9 +98,13 @@ int main()
                     if (test_function(j,t[i],*ip))
                         break;
                 }
-            } else if (test_function(j,t[i],0))
-                break;
+            } else
+                test_function(j,t[i],0);
         }
+    }
+    for (i=0; i<sizeof(dt)/sizeof(struct strto_tests); ++i) {
+        for (j=6; j<9; ++j)
+            test_function(j,dt[i],0);
     }
     return 0;
 }
@@ -109,7 +144,7 @@ static int test_function (int function_nr, struct strto_tests t, int base)
     int error, wrong;
     
     char *endptr, returned[80];
-    errno = wrong = 0;
+    errno = error = wrong = 0;
     switch (function_nr)
     {
         case 0:
