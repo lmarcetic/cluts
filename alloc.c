@@ -60,7 +60,7 @@ int main()
         ring->size = 0;
         ring->next = ring;
     }else
-        errno = -fprintf(stderr, "malloc failed to allocate the initialize %zu B\n", sizeof(struct block));
+        errno = -fprintf(stderr, "malloc failed to allocate the initial %zu B\n", sizeof(struct block));
     
     if (!errno)
         tmps = malloc(M/N);
@@ -121,34 +121,30 @@ int main()
         for (i=1; (size_t)i<pg_size+1 && !errno; ++i) {
             errno = posix_memalign((void **)&vp, st, i);
             s = (char*)vp;
-            if (s != NULL) {
-                if (errno == EINVAL)
-                    fprintf(stdout, "W:posix_memalign returned EINVAL, but gave a non-NULL pointer (alignment=%d)\n", i);
-                else {
-                    if (st%sizeof(void *)!=0 || sqrt(st)!=(int)st) {
-                        if(errno!=EINVAL)
-                            errno = -fprintf(stderr, "posix_memalign failed to return EINVAL when given alignment=%zu\n", st);
-                    }
-                    else if ((size_t)s%st != 0)
-                        errno = -fprintf(stderr, "posix_memalign gave a pointer that is not a multiple of %zu\n", st);
-                    else {
-                        for (j=0; j<i && !errno; ++j) {
-                            if (!setjmp(env[0])) {
-                                if (s[j] != 0)
-                                    errno = -fprintf(stderr, "posix_memalign failed to initialize memory to 0\n");
-                                if (!setjmp(env[0]))
-                                    ++s[j];
-                                else
-                                    errno = -fprintf(stderr, "posix_memalign 'allocated' unwritable memory\n");
-                            }
-                            else
-                                errno = -fprintf(stderr, "posix_memalign 'allocated' unreadable memory\n");
-                        }
-                    }
-                    
-                    sprintf(tmps, "free following a posix_memalign(%zu, %zu, %d) caused a SIGABRT\n", (size_t)s, st, i);
-                    errno = safe_free(vp, tmps);
+            if (s != NULL && errno == EINVAL) {
+                if (st%sizeof(void *)!=0 || sqrt(st)!=(int)st) {
+                    if(errno!=EINVAL)
+                        errno = -fprintf(stderr, "posix_memalign failed to return EINVAL when given alignment=%zu\n", st);
                 }
+                else if ((size_t)s%st != 0)
+                    errno = -fprintf(stderr, "posix_memalign gave a pointer that is not a multiple of %zu\n", st);
+                else {
+                    for (j=0; j<i && !errno; ++j) {
+                        if (!setjmp(env[0])) {
+                            if (s[j] != 0)
+                                errno = -fprintf(stderr, "posix_memalign failed to initialize memory to 0\n");
+                            if (!setjmp(env[0]))
+                                ++s[j];
+                            else
+                                errno = -fprintf(stderr, "posix_memalign 'allocated' unwritable memory\n");
+                        }
+                        else
+                            errno = -fprintf(stderr, "posix_memalign 'allocated' unreadable memory\n");
+                    }
+                }
+                
+                sprintf(tmps, "free following a posix_memalign(%zu, %zu, %d) caused a SIGABRT\n", (size_t)s, st, i);
+                errno = safe_free(vp, tmps);
             }
             else if (!errno)
                 errno = -fprintf(stderr, "posix_memalign NULL :-/\n");
