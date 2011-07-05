@@ -10,7 +10,14 @@
 #include <semaphore.h>
 #include <string.h>
 
-#define _XOPEN_SOURCE 9001
+/*
+ * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted.
+ *
+ * There's ABSOLUTELY NO WARRANTY, express or implied.
+ */
 
 /**
  ** \file depends: fprintf, malloc, setjmp, longjmp, sigaction!, sqrt, sprintf, sem_init, sem_wait, sem_post, strncmp, strncpy
@@ -345,3 +352,4 @@ void* test_malloc(void *sem)
     }
     return blocks;
 }
+//TODO: arrays instead of lists for speed and less fragmentation interferrence

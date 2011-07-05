@@ -12,6 +12,15 @@
 #include <float.h>  //[FLT|(L)DBL]_MAX
 #include "common/sequence.h"
 
+/*
+ * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted.
+ *
+ * There's ABSOLUTELY NO WARRANTY, express or implied.
+ */
+
 /**
  ** \file
  ** depends: fprintf, sprintf, vsnprintf, va_start, strcpy, strerror,
@@ -96,7 +105,9 @@ int main()
         wchar_t                *wnptr;
         int                    *bases;        //a 'sequence'
         struct function_result result;
-        int error;
+        int                    error;
+        size_t                 endptr_offset;
+        int                    sscanf_return;
     } t[] = {
         
         //Universal strto* tests:
@@ -276,8 +287,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstoumax)
                 r.val.ut = wcstoumax(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%ju", &r.val.ut);
-			err = errno;
+                sscanf(nptr, "%ju", &r.val.ut);
+            err = errno;
             sprintf(returned, "%ju", r.val.ut);
             if (r.val.ut != (uintmax_t)result.ull)
                 wrong = 1;
@@ -290,8 +301,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstoimax)
                 r.val.it = wcstoimax(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%jd", &r.val.it);
-			err = errno;
+                sscanf(nptr, "%jd", &r.val.it);
+            err = errno;
             sprintf(returned, "%jd", r.val.it);
             if (r.val.it != (intmax_t)result.ll)
                 wrong = 1;
@@ -304,8 +315,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstol)
                 r.val.l = wcstol(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%ld", &r.val.l);
-			err = errno;
+                sscanf(nptr, "%ld", &r.val.l);
+            err = errno;
             sprintf(returned, "%ld", r.val.l);
             if (r.val.l != (long)result.ll)
                 wrong = 1;
@@ -318,8 +329,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstoll)
                 r.val.ll = wcstoll(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%lld", &r.val.ll);
-			err = errno;
+                sscanf(nptr, "%lld", &r.val.ll);
+            err = errno;
             sprintf(returned, "%lld", r.val.ll);
             if (r.val.ll != (long long)result.ll)
                 wrong = 1;
@@ -332,8 +343,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstoul)
                 r.val.ul = wcstoul(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%lu", &r.val.ul);
-			err = errno;
+                sscanf(nptr, "%lu", &r.val.ul);
+            err = errno;
             sprintf(returned, "%lu", r.val.ul);
             if (r.val.ul != (unsigned long)result.ull)
                 wrong = 1;
@@ -346,8 +357,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstoull)
                 r.val.ull = wcstoull(wnptr, &wendptr, base);
             else
-				sscanf(nptr, "%llu", &r.val.ull);
-			err = errno;
+                sscanf(nptr, "%llu", &r.val.ull);
+            err = errno;
             sprintf(returned, "%llu", r.val.ull);
             if (r.val.ull != (unsigned long long)result.ull)
                 wrong = 1;
@@ -360,8 +371,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstof)
                 r.val.f = wcstof(wnptr, &wendptr);
             else
-				sscanf(nptr, "%f", &r.val.f);
-			err = errno;
+                sscanf(nptr, "%f", &r.val.f);
+            err = errno;
             sprintf(returned, "%f", r.val.f);
             if (r.val.f != (float)result.ld)
                 wrong = 1;
@@ -374,8 +385,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstod)
                 r.val.d = wcstod(wnptr, &wendptr);
             else
-				sscanf(nptr, "%lf", &r.val.d);
-			err = errno;
+                sscanf(nptr, "%lf", &r.val.d);
+            err = errno;
             sprintf(returned, "%lf", r.val.d);
             if (r.val.d != (double)result.ld)
                 wrong = 1;
@@ -388,8 +399,8 @@ static int test_function(int function_nr, int base, const wchar_t *wnptr,
             else if (function_nr == fnr_wcstold)
                 r.val.ld = wcstold(wnptr, &wendptr);
             else
-				sscanf(nptr, "%Lf", &r.val.ld);
-			err = errno;
+                sscanf(nptr, "%Lf", &r.val.ld);
+            err = errno;
             sprintf(returned, "%Lf", r.val.ld);
             if (r.val.ld != (long double)result.ld)
                 wrong = 1;

@@ -6,6 +6,15 @@
 #include <fcntl.h>
 #include <setjmp.h>
 
+/*
+ * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted.
+ *
+ * There's ABSOLUTELY NO WARRANTY, express or implied.
+ */
+
 /**
  ** \file depends: sysconf, open, mmap, mprotect,
  **                sigaction, setjmp, longjmp, fprintf
