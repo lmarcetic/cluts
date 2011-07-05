@@ -10,7 +10,7 @@
  */
 
 /**
- **  \file depends: bsearch
+ **  \file depends: bsearch, malloc
  **  \author Luka Marčetić, 2011
  **  A "sequence" is a tuple of sorted integers. It is preceded by a number
  **  indicating length (ie the first value in the array = nr. of elements-1)
@@ -31,18 +31,17 @@ int seq_has(int key, int *sequence);
  **/
 int* seq_x(int from, int to, int *exclude)
 {
-    int i, j=0, *sequence, *x = &exclude[1];
+    int i, j=1, k=0,
+        *sequence = malloc(sizeof(int)*(to-from+2));
     
-    i = (to-from+2);
-    sequence = malloc(sizeof(int) * i);
     for (i=from; i<=to; ++i) {
-        if (exclude[0] == 0  ||  i != *x)
-            sequence[++j] = i;
+        if (j <= exclude[0] && i == exclude[j])
+            ++j;
         else
-            ++x;
+            sequence[++k] = i;
     }
-    sequence[0] = j+1;
-    
+    sequence[0] = k;
+
     return sequence;
 }
 ///A handy auxiliary function, passes seq_x an empty exclude sequence
