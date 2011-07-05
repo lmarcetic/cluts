@@ -1,5 +1,14 @@
 #include <stdlib.h>
 
+/*
+ * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted.
+ *
+ * There's ABSOLUTELY NO WARRANTY, express or implied.
+ */
+
 /**
  **  \file depends: bsearch
  **  \author Luka Marčetić, 2011
