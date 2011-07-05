@@ -22,17 +22,17 @@ int seq_has(int key, int *sequence);
  **/
 int* seq_x(int from, int to, int *exclude)
 {
-    int i, j=0, *sequence, *x = exclude+1;
+    int i, j=0, *sequence, *x = &exclude[1];
     
-    i = (to-from+2 - exclude[0]);
+    i = (to-from+2);
     sequence = malloc(sizeof(int) * i);
-    sequence[0] = i;
     for (i=from; i<=to; ++i) {
         if (exclude[0] == 0  ||  i != *x)
             sequence[++j] = i;
         else
             ++x;
     }
+    sequence[0] = j+1;
     
     return sequence;
 }
