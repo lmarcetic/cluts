@@ -86,14 +86,15 @@ static wchar_t* spp2ws(char *s);
 int main()
 {
     setlocale(LC_NUMERIC, "POSIX");
-    int i, j, k, err;
+    int i, j, k, err, failed, decimal;
     //note that given a sufficiently large base, x=34 and z=36:
     int
-        b_zero[]         =  {1, 0},
-        b_one[]          =  {1, 1},
-        b_sixteen[]      =  {1, 16},
-        b_hexadecimal[]  =  {2, 0,16},
-        *b_all           =  seq_x(0,36, b_one);
+        b_zero[]           =  {1, 0},
+        b_sixteen[]        =  {1, 16},
+        *b_notsixteen      =  seq_x(0,33, b_sixteen),
+        b_hexadecimal[]    =  {2, 0,16},
+        *b_nothexadecimal  =  seq_x(0,33, b_hexadecimal),
+        *b_all             =  seq(0,36);
     int
         *f_strwcsto           =  seq(fnr_strtoumax, fnr_wcstold),
         *f_sscanf             =  seq(fnr_sscanfumax, fnr_sscanfx),
@@ -115,78 +116,77 @@ int main()
         int                    error;
     } t[] = {
         //Universal strto* tests:
-        //functions   wnptr    end  bases                   result   error
-        {f_strwcsto,  L"0 1",  1,   b_all,                  r_zero,  0},
-        {f_strwcsto,  L"01",   2,   b_all,                  r_one,   0},
-        {f_strwcsto,  L"0+1",  1,   b_all,                  r_zero,  0},
-        {f_strwcsto,  L"0-1",  1,   b_all,                  r_zero,  0},        
+        //functions   wnptr    end  bases             result   error
+        {f_strwcsto,  L"0 1",  1,   b_all,            r_zero,  0},
+        {f_strwcsto,  L"01",   2,   b_all,            r_one,   0},
+        {f_strwcsto,  L"0+1",  1,   b_all,            r_zero,  0},
+        {f_strwcsto,  L"0-1",  1,   b_all,            r_zero,  0},        
         //standard says to match the first char making the rest invalid:
-        {f_strwcsto,  L"- 1",  0,   b_all,                  r_zero,  EINVAL},
-        {f_strwcsto,  L"--1",  0,   b_all,                  r_zero,  EINVAL},
-        {f_strwcsto,  L"-+1",  0,   b_all,                  r_zero,  EINVAL},
-        {f_strwcsto,  L"+-1",  0,   b_all,                  r_zero,  EINVAL},
+        {f_strwcsto,  L"- 1",  0,   b_all,            r_zero,  -1},
+        {f_strwcsto,  L"--1",  0,   b_all,            r_zero,  -1},
+        {f_strwcsto,  L"-+1",  0,   b_all,            r_zero,  -1},
+        {f_strwcsto,  L"+-1",  0,   b_all,            r_zero,  -1},
         //the 'longest initial subsequence' is the invalid "0x":
-        {f_strwcsto,  L"0x",   0,   b_hexadecimal,          r_zero,  EINVAL},
-        {f_strwcsto,  L"0x 1", 0,   b_hexadecimal,          r_zero,  EINVAL},
-        {f_strwcsto,  L"0x+1", 0,   b_sixteen,              r_zero,  EINVAL},
-        {f_strwcsto,  L"0x-1", 0,   b_sixteen,              r_zero,  EINVAL},
-        {f_strwcsto,  L"0Xx",  0,   b_sixteen,              r_zero,  EINVAL},
-        {f_strwcsto,  L"0xX",  0,   b_sixteen,              r_zero,  EINVAL},
+        {f_strwcsto,  L"0x",   0,   b_hexadecimal,    r_zero,  -1},
+        {f_strwcsto,  L"0x 1", 0,   b_hexadecimal,    r_zero,  -1},
+        {f_strwcsto,  L"0x+1", 0,   b_sixteen,        r_zero,  -1},
+        {f_strwcsto,  L"0x-1", 0,   b_sixteen,        r_zero,  -1},
+        {f_strwcsto,  L"0Xx",  0,   b_sixteen,        r_zero,  -1},
+        {f_strwcsto,  L"0xX",  0,   b_sixteen,        r_zero,  -1},
         //should be a valid zero in a non-16 base, save bases>=34:
-        {f_strwcsto,  L"00x1", 2,   seq_x(0,33, b_sixteen), r_zero,  0},
-        {f_strwcsto,  L"0X0x", 1,   seq_x(0,33, b_sixteen), r_zero,  0},
-        {f_strwcsto,  L"0xX",  1,   seq_x(0,33, b_sixteen), r_zero,  0},
-        {f_strwcsto,  L"0Xx",  1,   seq_x(0,33, b_sixteen), r_zero,  0},
-        {f_strwcsto,  L"0x+1", 1,   seq_x(0,33, b_sixteen), r_zero,  0},
-        {f_strwcsto,  L"0x-1", 1,   seq_x(0,33, b_sixteen), r_zero,  0},
+        {f_strwcsto,  L"00x1", 2,   b_notsixteen,     r_zero,  0},
+        {f_strwcsto,  L"0xX",  1,   b_notsixteen,     r_zero,  0},
+        {f_strwcsto,  L"0Xx",  1,   b_notsixteen,     r_zero,  0},
+        {f_strwcsto,  L"0x+1", 1,   b_notsixteen,     r_zero,  0},
+        {f_strwcsto,  L"0x-1", 1,   b_notsixteen,     r_zero,  0},
+        {f_strwcsto,  L"0X0x", 1,   b_nothexadecimal, r_zero,  0},
     
         //Decimal strto* tests:
-        //functions           wnptr     end  (bases)  result          error
-        {f_strwcsto_decimal,  L"0x.1",  4,   b_zero,  {.ld=0.062500}, 0},
-        {f_strwcsto_decimal,  L".10x1", 5,   b_zero,  {.ld=0.062500}, 0},
+        //functions          wnptr     end (bases)     result        error
+        {f_strwcsto_decimal, L"0x.1",  4,  b_sixteen,  {.ld=0.0625}, 0},
         //a 'non-empty sequence' missing before E/P:
-        {f_strwcsto_decimal,  L"e1",    0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"E1",    0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"p1",    0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"P1",    0,   b_zero,  r_zero,         EINVAL},
+        {f_strwcsto_decimal, L"e1",    0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"E1",    0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"p1",    0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"P1",    0,  b_sixteen,  r_zero,       -1},
         //missing exponent (+/- optional, the rest isn't):
-        {f_strwcsto_decimal,  L"1e",    0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"1E",    0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1p",  0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1P",  0,   b_zero,  r_zero,         EINVAL},
+        {f_strwcsto_decimal, L"1e",    0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"1E",    0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1p",  0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1P",  0,  b_sixteen,  r_zero,       -1},
         
-        {f_strwcsto_decimal,  L"1e+",   0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"1E+",   0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1p+", 0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1P+", 0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"1e-",   0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"1E-",   0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1p-", 0,   b_zero,  r_zero,         EINVAL},
-        {f_strwcsto_decimal,  L"0x1P-", 0,   b_zero,  r_zero,         EINVAL},
+        {f_strwcsto_decimal, L"1e+",   0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"1E+",   0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1p+", 0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1P+", 0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"1e-",   0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"1E-",   0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1p-", 0,  b_sixteen,  r_zero,       -1},
+        {f_strwcsto_decimal, L"0x1P-", 0,  b_sixteen,  r_zero,       -1},
         //'optional' does not make invalid:
-        {f_strwcsto_decimal,  L"1e+0",  4,   b_zero,  r_one,          0},
-        {f_strwcsto_decimal,  L"1E+0",  4,   b_zero,  r_one,          0},
-        {f_strwcsto_decimal,  L"1e-0",  4,   b_zero,  r_one,          0},
-        {f_strwcsto_decimal,  L"1E-0",  4,   b_zero,  r_one,          0},
+        {f_strwcsto_decimal, L"1e+0",  4,  b_sixteen,  r_one,        0},
+        {f_strwcsto_decimal, L"1E+0",  4,  b_sixteen,  r_one,        0},
+        {f_strwcsto_decimal, L"1e-0",  4,  b_sixteen,  r_one,        0},
+        {f_strwcsto_decimal, L"1E-0",  4,  b_sixteen,  r_one,        0},
     
         //Min/max value tests of individual functions(code's wide here,i know):
-        //functions                                wnptr                                  end  bases    result                error
-        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MAX)),  0,   b_zero,  {.ll = INTMAX_MAX},   ERANGE},
-        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MIN)),  0,   b_zero,  {.ll = INTMAX_MIN},   ERANGE},
-        {(int[]){2, fnr_strtoumax, fnr_wcstoumax}, spp2ws(sreturnf("%ju",  UINTMAX_MAX)), 0,   b_zero,  {.ull= UINTMAX_MAX},  ERANGE},
-        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MAX)),    0,   b_zero,  {.ll = LONG_MAX},     ERANGE},
-        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MIN)),    0,   b_zero,  {.ll = LONG_MIN},     ERANGE},
-        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MAX)),   0,   b_zero,  {.ll = LLONG_MAX},    ERANGE},
-        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MIN)),   0,   b_zero,  {.ll = LLONG_MIN},    ERANGE},
-        {(int[]){2, fnr_strtoul, fnr_wcstoul},     spp2ws(sreturnf("%lu",  ULONG_MAX)),   0,   b_zero,  {.ull= ULONG_MAX},    ERANGE},
-        {(int[]){2, fnr_strtoull, fnr_wcstoull},   spp2ws(sreturnf("%llu", ULLONG_MAX)),  0,   b_zero,  {.ull= ULLONG_MAX},   ERANGE},
+        //functions                                wnptr                                  end  bases       result                error
+        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MAX)),  0,   b_zero,     {.ll = INTMAX_MAX},   ERANGE},
+        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MIN)),  0,   b_zero,     {.ll = INTMAX_MIN},   ERANGE},
+        {(int[]){2, fnr_strtoumax, fnr_wcstoumax}, spp2ws(sreturnf("%ju",  UINTMAX_MAX)), 0,   b_zero,     {.ull= UINTMAX_MAX},  ERANGE},
+        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MAX)),    0,   b_zero,     {.ll = LONG_MAX},     ERANGE},
+        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MIN)),    0,   b_zero,     {.ll = LONG_MIN},     ERANGE},
+        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MAX)),   0,   b_zero,     {.ll = LLONG_MAX},    ERANGE},
+        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MIN)),   0,   b_zero,     {.ll = LLONG_MIN},    ERANGE},
+        {(int[]){2, fnr_strtoul, fnr_wcstoul},     spp2ws(sreturnf("%lu",  ULONG_MAX)),   0,   b_zero,     {.ull= ULONG_MAX},    ERANGE},
+        {(int[]){2, fnr_strtoull, fnr_wcstoull},   spp2ws(sreturnf("%llu", ULLONG_MAX)),  0,   b_zero,     {.ull= ULLONG_MAX},   ERANGE},
         
-        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MAX)),     0,   b_zero,  {.ld = HUGE_VALF},    ERANGE},
-        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MIN)),     0,   b_zero,  {.ld = -HUGE_VALF},   ERANGE},
-        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MAX)),     0,   b_zero,  {.ld = HUGE_VAL},     ERANGE},
-        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MIN)),     0,   b_zero,  {.ld = -HUGE_VAL},    ERANGE},
-        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MAX)),    0,   b_zero,  {.ld = HUGE_VALL},    ERANGE},
-        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MIN)),    0,   b_zero,  {.ld = -HUGE_VALL},   ERANGE},
+        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MAX)),     0,   b_sixteen,  {.ld = HUGE_VALF},    ERANGE},
+        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MIN)),     0,   b_sixteen,  {.ld = -HUGE_VALF},   ERANGE},
+        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MAX)),     0,   b_sixteen,  {.ld = HUGE_VAL},     ERANGE},
+        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MIN)),     0,   b_sixteen,  {.ld = -HUGE_VAL},    ERANGE},
+        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MAX)),    0,   b_sixteen,  {.ld = HUGE_VALL},    ERANGE},
+        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MIN)),    0,   b_sixteen,  {.ld = -HUGE_VALL},   ERANGE},
     };
     
     struct sscanf_tests {
@@ -204,17 +204,17 @@ int main()
         {f_sscanf,          L"00x1", 1,   r_zero,  0},
         {f_sscanf,          L"0X0x", 1,   r_zero,  0},
         //standard says to match the first char making the rest invalid:
-        {f_sscanf,          L"- 1",  0,   r_zero,  0},
-        {f_sscanf,          L"--1",  0,   r_zero,  0},
-        {f_sscanf,          L"-+1",  0,   r_zero,  0},
-        {f_sscanf,          L"+-1",  0,   r_zero,  0},
+        {f_sscanf,          L"- 1",  0,   r_zero,  -1},
+        {f_sscanf,          L"--1",  0,   r_zero,  -1},
+        {f_sscanf,          L"-+1",  0,   r_zero,  -1},
+        {f_sscanf,          L"+-1",  0,   r_zero,  -1},
         //the 'longest initial subsequence' is the invalid "0x":
-        {f_sscanfx,         L"0x",   0,   r_zero,  0},
-        {f_sscanfx,         L"0x 1", 0,   r_zero,  0},
-        {f_sscanfx,         L"0x+1", 0,   r_zero,  0},
-        {f_sscanfx,         L"0x-1", 0,   r_zero,  0},
-        {f_sscanfx,         L"0Xx",  0,   r_zero,  0},
-        {f_sscanfx,         L"0xX",  0,   r_zero,  0},
+        {f_sscanfx,         L"0x",   0,   r_zero,  -1},
+        {f_sscanfx,         L"0x 1", 0,   r_zero,  -1},
+        {f_sscanfx,         L"0x+1", 0,   r_zero,  -1},
+        {f_sscanfx,         L"0x-1", 0,   r_zero,  -1},
+        {f_sscanfx,         L"0Xx",  0,   r_zero,  -1},
+        {f_sscanfx,         L"0xX",  0,   r_zero,  -1},
         //should be a valid zero interpreted as a non-16 base number:
         {f_sscanf_nonx,     L"0xX",  1,   r_zero,  0},
         {f_sscanf_nonx,     L"0Xx",  1,   r_zero,  0},
@@ -224,7 +224,7 @@ int main()
         //Decimal sscanf tests:
         //functions         wnptr     s_r  result          error
         {f_sscanf_decimal,  L"0x.1",  1,   {.ld=0.062500}, 0},
-        {f_sscanf_decimal,  L".10x1", 1,   {.ld=0.062500}, 0},
+        {f_sscanf_decimal,  L".10x1", 1,   {.ld=0.1},      0},
         //a 'non-empty sequence' missing before E/P:
         {f_sscanf_decimal,  L"e1",    0,   r_zero,         0},
         {f_sscanf_decimal,  L"E1",    0,   r_zero,         0},
@@ -251,11 +251,15 @@ int main()
         {f_sscanf_decimal,  L"1E-0",  1,   r_one,          0},
     };
     
-    //Execute strwcsto tests:
-    for (i=0; i<(int)(sizeof(t)/sizeof(t[0])); ++i)
-        for (j=1; j<=t[i].function_nrs[0]; ++j)
-            for (k=1; k<=t[i].bases[0]; ++k) {
-                if (t[i].bases[k] != 1) {
+    failed=0;
+    
+    //Execute strwcsto tests (decimal functions only if testing base 16 too):
+    for (i=0; i<(int)(sizeof(t)/sizeof(t[0])); ++i) {
+        err = 0;
+        for (j=1; !err && j<=t[i].function_nrs[0]; ++j) {
+            decimal = seq_has(t[i].function_nrs[j], f_strwcsto_decimal);
+            for (k=1; !err && k <= t[i].bases[0]; ++k)
+                if (t[i].bases[k] != 1 && (!decimal || t[i].bases[k]==16))
                     err = test_function(
                                         t[i].function_nrs[j],
                                         t[i].bases[k],
@@ -264,14 +268,15 @@ int main()
                                         t[i].result,
                                         t[i].error
                     );
-                    if (err)
-                        break; //then don't test other bases
-                }
-            }
+        }
+        if (err)
+            ++failed;
+    }
     
     //Execute sscanf tests:
-    for (i=0; i<(int)(sizeof(t2)/sizeof(t2[0])); ++i)
-        for (j=1; j<=t2[i].function_nrs[0]; ++j)
+    for (i=0; i<(int)(sizeof(t2)/sizeof(t2[0])); ++i) {
+        err = 0;
+        for (j=1; !err && j<=t2[i].function_nrs[0]; ++j)
             err = test_function(
                                 t2[i].function_nrs[j],
                                 0,
@@ -280,8 +285,11 @@ int main()
                                 t2[i].result,
                                 t2[i].error
             );
+        if (err)
+            ++failed;
+    }
     
-    return 0;
+    return failed;
 }
 
 /**
@@ -354,10 +362,10 @@ static int test_function(const int function_nr, const int base,
         f_decimal[]  =  {9, fnr_strtof,  fnr_strtod,  fnr_strtold,
                             fnr_wcstof,  fnr_wcstod,  fnr_wcstold,
                             fnr_sscanff, fnr_sscanfd, fnr_sscanfld},
-        f_unsigned[] =  {9, fnr_strtoumax,  fnr_strtoul,  fnr_strtoull,
-                            fnr_wcstoumax,  fnr_wcstoul,  fnr_wcstoull,
-                            fnr_sscanfumax, fnr_sscanful, fnr_sscanfull,
-                            fnr_sscanfo,    fnr_sscanfx},
+        f_unsigned[] =  {2, fnr_strtoumax,  fnr_strtoul,  fnr_strtoull,
+                             fnr_wcstoumax,  fnr_wcstoul,  fnr_wcstoull,
+                             fnr_sscanfumax, fnr_sscanful, fnr_sscanfull,
+                             fnr_sscanfo,    fnr_sscanfx},
         *f_wide      =  seq(fnr_wcstoumax, fnr_wcstold);
     wchar_t *wendptr;
     char *endptr, returned[80], *s, *nptr=malloc(sizeof(char) * wcslen(wnptr));
@@ -510,7 +518,7 @@ static int test_function(const int function_nr, const int base,
             return 0;
         break;
     }
-    if(err != error)
+    if(error != -1 && err != error)
         wrong = 1;
     
     if (wrong) {
@@ -612,8 +620,10 @@ static int test_function(const int function_nr, const int base,
 static char* e_name(int error)
 {
     char *s = malloc(80*sizeof(char));
-
-    if (error == EINVAL)
+    
+    if (error == -1)
+        strcpy(s, "<unspecified>");
+    else if (error == EINVAL)
         strcpy(s, "EINVAL");
     else if (error == ERANGE)
         strcpy(s, "ERANGE");
@@ -630,8 +640,8 @@ static char* e_name(int error)
  **/
 static char* sreturnf(const char *format, ...)
 {
-    static const int s_size = 80*sizeof(char);
-    char *s = malloc(s_size);
+    const int s_size = 80;
+    char *s = malloc(sizeof(char)*s_size);
     va_list ap;
     
     va_start(ap, format);
@@ -640,8 +650,8 @@ static char* sreturnf(const char *format, ...)
 }
 
 /**
- ** Increments the absolute value(that is, regardless of the +/- sign) of:
- ** \param s - a number passed as a string
+ ** Increments the 'absolute' value(that is, regardless of the +/- sign) of:
+ ** \param s - a number passed as a string (WILL BE FREED AFTERWARDS)
  ** \returns a wide char equivalent of s
  ** note: will not enlarge the string, overflow is theoretically possible
  **/
@@ -665,6 +675,6 @@ static wchar_t* spp2ws(char *s)
     }
     
     mbstowcs(ws, s, strlen(s));
+    free(s);
     return ws;
 }
-//TODO: [wcs|str]to* endptr checks, sscanf return checks
