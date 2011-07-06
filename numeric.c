@@ -5,12 +5,11 @@
 #include <inttypes.h>
 #include <string.h>
 #include <locale.h>
-#include <stdarg.h>
 #include <limits.h> //*LONG_MAX
 #include <math.h>   //HUGE_VAL*
 #include <wchar.h>
 #include <float.h>  //[FLT|(L)DBL]_MAX
-#include "common/sequence.h"
+#include "common/common.h"
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -23,8 +22,8 @@
 
 /**
  ** \file
- ** depends: fprintf, sprintf, vsnprintf, va_start, strcpy, strerror,
- **          strlen, wcslen, wcstombs, mbstowcs, malloc, free, setlocale
+ ** depends: setlocale, malloc, free, fprintf, sprintf, vsnprintf, 
+ **          va_start, va_end, strcpy, strerror, wcstombs, mbstowcs
  ** \author Luka Marčetić, 2011
  **/
 
@@ -32,52 +31,57 @@
  ** these 'big' types are cast to the appropriate ones in test_function
  **/
 struct function_result {
-    long long          ll;
-    unsigned long long ull;
-    long double        ld;
+    uintmax_t           ut;
+    intmax_t            it;
+    unsigned int        ui;
+    long                l;
+    long long           ll;
+    unsigned long       ul;
+    unsigned long long  ull;
+    float               f;
+    double              d;
+    long double         ld;
 };
-///used to identify respective functions
+///used to identify respective functions or arguments
 enum function_nrs {
-        fnr_strtoumax,
-        fnr_strtoimax,
-        fnr_strtol,
-        fnr_strtoll,
-        fnr_strtoul,
-        fnr_strtoull,
-        fnr_strtof,
-        fnr_strtod,
-        fnr_strtold,
-        
-        fnr_wcstoumax,
-        fnr_wcstoimax,
-        fnr_wcstol,
-        fnr_wcstoll,
-        fnr_wcstoul,
-        fnr_wcstoull,
-        fnr_wcstof,
-        fnr_wcstod,
-        fnr_wcstold,
-        
-        fnr_sscanfumax,
-        fnr_sscanfimax,
-        fnr_sscanfl,
-        fnr_sscanfll,
-        fnr_sscanful,
-        fnr_sscanfull,
-        fnr_sscanff,
-        fnr_sscanfd,
-        fnr_sscanfld,
-        fnr_sscanfo,
-        fnr_sscanfx
+    fnr_strtoumax,
+    fnr_strtoimax,
+    fnr_strtol,
+    fnr_strtoll,
+    fnr_strtoul,
+    fnr_strtoull,
+    fnr_strtof,
+    fnr_strtod,
+    fnr_strtold,
+    
+    fnr_wcstoumax,
+    fnr_wcstoimax,
+    fnr_wcstol,
+    fnr_wcstoll,
+    fnr_wcstoul,
+    fnr_wcstoull,
+    fnr_wcstof,
+    fnr_wcstod,
+    fnr_wcstold,
+    
+    fnr_sscanfumax,
+    fnr_sscanfimax,
+    fnr_sscanfl,
+    fnr_sscanfll,
+    fnr_sscanful,
+    fnr_sscanfull,
+    fnr_sscanff,
+    fnr_sscanfd,
+    fnr_sscanfld,
+    fnr_sscanfo,
+    fnr_sscanfx
 };
 
 static int test_function(const int function_nr, const int base,
                          const wchar_t *wnptr, const void *x,
                          const struct function_result result, const int error);
 static char* e_name(int error);
-static char* sreturnf(const char *format, ...);
 static wchar_t* spp2ws(char *s);
-
 
 /**
  **  Tests [wcs|str]to* functions' and sscanf's return values when given
@@ -104,8 +108,9 @@ int main()
         f_sscanfx[]           =  {1, fnr_sscanfx},
         *f_sscanf_nonx        =  seq(fnr_sscanfumax, fnr_sscanfo);
     struct function_result
-        r_zero           = {0, 0, 0},
-        r_one            = {1, 1, 1};
+        r_zero           = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        r_one            = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        r_0_0625         = {.f=0.0625, .d=0.0625, .ld=0.0625};
     
     struct strwcsto_tests {
         int                    *function_nrs;
@@ -143,7 +148,7 @@ int main()
     
         //Decimal strto* tests:
         //functions          wnptr     end (bases)     result        error
-        {f_strwcsto_decimal, L"0x.1",  4,  b_sixteen,  {.ld=0.0625}, 0},
+        {f_strwcsto_decimal, L"0x.1",  4,  b_sixteen,  r_0_0625,     0},
         //a 'non-empty sequence' missing before E/P:
         {f_strwcsto_decimal, L"e1",    0,  b_sixteen,  r_zero,       -1},
         {f_strwcsto_decimal, L"E1",    0,  b_sixteen,  r_zero,       -1},
@@ -170,23 +175,23 @@ int main()
         {f_strwcsto_decimal, L"1E-0",  4,  b_sixteen,  r_one,        0},
     
         //Min/max value tests of individual functions(code's wide here,i know):
-        //functions                                wnptr                                  end  bases       result                error
-        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MAX)),  0,   b_zero,     {.ll = INTMAX_MAX},   ERANGE},
-        {(int[]){2, fnr_strtoimax, fnr_wcstoimax}, spp2ws(sreturnf("%jd",  INTMAX_MIN)),  0,   b_zero,     {.ll = INTMAX_MIN},   ERANGE},
-        {(int[]){2, fnr_strtoumax, fnr_wcstoumax}, spp2ws(sreturnf("%ju",  UINTMAX_MAX)), 0,   b_zero,     {.ull= UINTMAX_MAX},  ERANGE},
-        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MAX)),    0,   b_zero,     {.ll = LONG_MAX},     ERANGE},
-        {(int[]){2, fnr_strtol, fnr_wcstol},       spp2ws(sreturnf("%ld",  LONG_MIN)),    0,   b_zero,     {.ll = LONG_MIN},     ERANGE},
-        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MAX)),   0,   b_zero,     {.ll = LLONG_MAX},    ERANGE},
-        {(int[]){2, fnr_strtoll, fnr_wcstoll},     spp2ws(sreturnf("%lld", LLONG_MIN)),   0,   b_zero,     {.ll = LLONG_MIN},    ERANGE},
-        {(int[]){2, fnr_strtoul, fnr_wcstoul},     spp2ws(sreturnf("%lu",  ULONG_MAX)),   0,   b_zero,     {.ull= ULONG_MAX},    ERANGE},
-        {(int[]){2, fnr_strtoull, fnr_wcstoull},   spp2ws(sreturnf("%llu", ULLONG_MAX)),  0,   b_zero,     {.ull= ULLONG_MAX},   ERANGE},
+        //functions                               wnptr                                 end bases      result               error
+        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  spp2ws(sreturnf("%jd",  INTMAX_MAX)),  0, b_zero,    {.it = INTMAX_MAX},  ERANGE},
+        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  spp2ws(sreturnf("%jd",  INTMAX_MIN)),  0, b_zero,    {.it = INTMAX_MIN},  ERANGE},
+        {(int[]){2,fnr_strtoumax,fnr_wcstoumax},  spp2ws(sreturnf("%ju",  UINTMAX_MAX)), 0, b_zero,    {.ut = UINTMAX_MAX}, ERANGE},
+        {(int[]){2,fnr_strtol,   fnr_wcstol},     spp2ws(sreturnf("%ld",  LONG_MAX)),    0, b_zero,    {.l  = LONG_MAX},    ERANGE},
+        {(int[]){2,fnr_strtol,   fnr_wcstol},     spp2ws(sreturnf("%ld",  LONG_MIN)),    0, b_zero,    {.l  = LONG_MIN},    ERANGE},
+        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    spp2ws(sreturnf("%lld", LLONG_MAX)),   0, b_zero,    {.ll = LLONG_MAX},   ERANGE},
+        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    spp2ws(sreturnf("%lld", LLONG_MIN)),   0, b_zero,    {.ll = LLONG_MIN},   ERANGE},
+        {(int[]){2,fnr_strtoul,  fnr_wcstoul},    spp2ws(sreturnf("%lu",  ULONG_MAX)),   0, b_zero,    {.ul = ULONG_MAX},   ERANGE},
+        {(int[]){2,fnr_strtoull, fnr_wcstoull},   spp2ws(sreturnf("%llu", ULLONG_MAX)),  0, b_zero,    {.ull= ULLONG_MAX},  ERANGE},
         
-        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MAX)),     0,   b_sixteen,  {.ld = HUGE_VALF},    ERANGE},
-        {(int[]){2, fnr_strtof, fnr_wcstof},       spp2ws(sreturnf("%f",   FLT_MIN)),     0,   b_sixteen,  {.ld = -HUGE_VALF},   ERANGE},
-        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MAX)),     0,   b_sixteen,  {.ld = HUGE_VAL},     ERANGE},
-        {(int[]){2, fnr_strtod, fnr_wcstod},       spp2ws(sreturnf("%lf",  DBL_MIN)),     0,   b_sixteen,  {.ld = -HUGE_VAL},    ERANGE},
-        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MAX)),    0,   b_sixteen,  {.ld = HUGE_VALL},    ERANGE},
-        {(int[]){2, fnr_strtold, fnr_wcstold},     spp2ws(sreturnf("%Lf",  LDBL_MIN)),    0,   b_sixteen,  {.ld = -HUGE_VALL},   ERANGE},
+        {(int[]){2,fnr_strtof,   fnr_wcstof},     spp2ws(sreturnf("%f",   FLT_MAX)),     0, b_sixteen, {.f  = HUGE_VALF},   ERANGE},
+        {(int[]){2,fnr_strtof,   fnr_wcstof},     spp2ws(sreturnf("%f",   FLT_MIN)),     0, b_sixteen, {.f  = -HUGE_VALF},  ERANGE},
+        {(int[]){2,fnr_strtod,   fnr_wcstod},     spp2ws(sreturnf("%lf",  DBL_MAX)),     0, b_sixteen, {.d  = HUGE_VAL},    ERANGE},
+        {(int[]){2,fnr_strtod,   fnr_wcstod},     spp2ws(sreturnf("%lf",  DBL_MIN)),     0, b_sixteen, {.d  = -HUGE_VAL},   ERANGE},
+        {(int[]){2,fnr_strtold,  fnr_wcstold},    spp2ws(sreturnf("%Lf",  LDBL_MAX)),    0, b_sixteen, {.ld = HUGE_VALL},   ERANGE},
+        {(int[]){2,fnr_strtold,  fnr_wcstold},    spp2ws(sreturnf("%Lf",  LDBL_MIN)),    0, b_sixteen, {.ld = -HUGE_VALL},  ERANGE},
     };
     
     struct sscanf_tests {
@@ -341,37 +346,22 @@ static int test_function(const int function_nr, const int base,
             "%u"
         };
     ///remembering return values
-    struct f_return {
-        union {
-            uintmax_t ut;
-            intmax_t it;
-            unsigned int ui;
-            long l;
-            long long ll;
-            unsigned long ul;
-            unsigned long long ull;
-            float f;
-            double d;
-            long double ld;
-        } val;
-    } r;
+    struct function_result rval;
     //other stuff
+    int err, wrong;
     int
-        err, wrong,
         *f_sscanf    =  seq(fnr_sscanfumax, fnr_sscanfx),
         f_decimal[]  =  {9, fnr_strtof,  fnr_strtod,  fnr_strtold,
                             fnr_wcstof,  fnr_wcstod,  fnr_wcstold,
                             fnr_sscanff, fnr_sscanfd, fnr_sscanfld},
-        f_unsigned[] =  {2, fnr_strtoumax,  fnr_strtoul,  fnr_strtoull,
-                             fnr_wcstoumax,  fnr_wcstoul,  fnr_wcstoull,
-                             fnr_sscanfumax, fnr_sscanful, fnr_sscanfull,
-                             fnr_sscanfo,    fnr_sscanfx},
         *f_wide      =  seq(fnr_wcstoumax, fnr_wcstold);
+    size_t wnptr_size = wcstombs(NULL, wnptr, 0)+1;
+    char *endptr, *resulted, *expected, *s,
+         *nptr = malloc(sizeof(char) + wnptr_size);
+    wcstombs(nptr, wnptr, wnptr_size);
     wchar_t *wendptr;
-    char *endptr, returned[80], *s, *nptr=malloc(sizeof(char) * wcslen(wnptr));
-    wcstombs(nptr, wnptr, wcslen(wnptr));
-    int ret, sscanf_return;
     size_t off, endptr_offset;
+    int ret, sscanf_return;
     
     errno = err = wrong = 0;
     switch (function_nr)
@@ -380,202 +370,202 @@ static int test_function(const int function_nr, const int base,
         case fnr_wcstoumax:
         case fnr_sscanfumax:
             if (function_nr == fnr_strtoumax)
-                r.val.ut = strtoumax(nptr, &endptr, base);
+                rval.ut = strtoumax(nptr, &endptr, base);
             else if (function_nr == fnr_wcstoumax)
-                r.val.ut = wcstoumax(wnptr, &wendptr, base);
+                rval.ut = wcstoumax(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%ju", &r.val.ut);
+                ret = sscanf(nptr, "%ju", &rval.ut);
             err = errno;
-            sprintf(returned, "%ju", r.val.ut);
-            if (r.val.ut != (uintmax_t)result.ull)
+            
+            if (rval.ut != result.ut || (error!=-1 && err!=error)){
+                resulted = sreturnf("%ju", rval.ut);
+                expected = sreturnf("%ju", result.ut);
                 wrong = 1;
+            }
         break;
         case fnr_strtoimax:
         case fnr_wcstoimax:
         case fnr_sscanfimax:
             if (function_nr == fnr_strtoimax)
-                r.val.it = strtoimax(nptr, &endptr, base);
+                rval.it = strtoimax(nptr, &endptr, base);
             else if (function_nr == fnr_wcstoimax)
-                r.val.it = wcstoimax(wnptr, &wendptr, base);
+                rval.it = wcstoimax(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%jd", &r.val.it);
+                ret = sscanf(nptr, "%jd", &rval.it);
             err = errno;
-            sprintf(returned, "%jd", r.val.it);
-            if (r.val.it != (intmax_t)result.ll)
+            
+            if (rval.it != result.it || (error!=-1 && err!=error)){
+                resulted = sreturnf("%jd", rval.it);
+                expected = sreturnf("%jd", result.it);
                 wrong = 1;
+			}
         break;
         case fnr_strtol:
         case fnr_wcstol:
         case fnr_sscanfl:
             if (function_nr == fnr_strtol)
-                r.val.l = strtol(nptr, &endptr, base);
+                rval.l = strtol(nptr, &endptr, base);
             else if (function_nr == fnr_wcstol)
-                r.val.l = wcstol(wnptr, &wendptr, base);
+                rval.l = wcstol(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%ld", &r.val.l);
+                ret = sscanf(nptr, "%ld", &rval.l);
             err = errno;
-            sprintf(returned, "%ld", r.val.l);
-            if (r.val.l != (long)result.ll)
+            
+            if (rval.l != result.l || (error!=-1 && err!=error)){
+                resulted = sreturnf("%ld", rval.l);
+                expected = sreturnf("%ld", result.l);
                 wrong = 1;
+			}
         break;
         case fnr_strtoll:
         case fnr_wcstoll:
         case fnr_sscanfll:
             if (function_nr == fnr_strtoll)
-                r.val.ll = strtoll(nptr, &endptr, base);
+                rval.ll = strtoll(nptr, &endptr, base);
             else if (function_nr == fnr_wcstoll)
-                r.val.ll = wcstoll(wnptr, &wendptr, base);
+                rval.ll = wcstoll(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%lld", &r.val.ll);
+                ret = sscanf(nptr, "%lld", &rval.ll);
             err = errno;
-            sprintf(returned, "%lld", r.val.ll);
-            if (r.val.ll != (long long)result.ll)
+            
+            if (rval.ll != result.ll || (error!=-1 && err!=error)){
+                resulted = sreturnf("%lld", rval.ll);
+                expected = sreturnf("%lld", result.ll);
                 wrong = 1;
+			}
         break;
         case fnr_strtoul:
         case fnr_wcstoul:
         case fnr_sscanful:
             if (function_nr == fnr_strtoul)
-                r.val.ul = strtoul(nptr, &endptr, base);
+                rval.ul = strtoul(nptr, &endptr, base);
             else if (function_nr == fnr_wcstoul)
-                r.val.ul = wcstoul(wnptr, &wendptr, base);
+                rval.ul = wcstoul(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%lu", &r.val.ul);
+                ret = sscanf(nptr, "%lu", &rval.ul);
             err = errno;
-            sprintf(returned, "%lu", r.val.ul);
-            if (r.val.ul != (unsigned long)result.ull)
+            
+            if(rval.ul != result.ul || (error!=-1 && err!=error)){
+                resulted = sreturnf("%lu", rval.ul);
+                expected = sreturnf("%lu", result.ul);
                 wrong = 1;
+			}
         break;
         case fnr_strtoull:
         case fnr_wcstoull:
         case fnr_sscanfull:
             if (function_nr == fnr_strtoull)
-                r.val.ull = strtoull(nptr, &endptr, base);
+                rval.ull = strtoull(nptr, &endptr, base);
             else if (function_nr == fnr_wcstoull)
-                r.val.ull = wcstoull(wnptr, &wendptr, base);
+                rval.ull = wcstoull(wnptr, &wendptr, base);
             else
-                ret = sscanf(nptr, "%llu", &r.val.ull);
+                ret = sscanf(nptr, "%llu", &rval.ull);
             err = errno;
-            sprintf(returned, "%llu", r.val.ull);
-            if (r.val.ull != (unsigned long long)result.ull)
+            
+            if (rval.ull != result.ull || (error!=-1 && err!=error)){
+                resulted = sreturnf("%llu", rval.ull);
+                expected = sreturnf("%llu", result.ull);
                 wrong = 1;
+			}
         break;
         case fnr_strtof:
         case fnr_wcstof:
         case fnr_sscanff:
             if (function_nr == fnr_strtof)
-                r.val.f = strtof(nptr, &endptr);
+                rval.f = strtof(nptr, &endptr);
             else if (function_nr == fnr_wcstof)
-                r.val.f = wcstof(wnptr, &wendptr);
+                rval.f = wcstof(wnptr, &wendptr);
             else
-                ret = sscanf(nptr, "%f", &r.val.f);
+                ret = sscanf("1e-", "%f", &rval.f);
             err = errno;
-            sprintf(returned, "%f", r.val.f);
-            if (r.val.f != (float)result.ld)
+            
+            if (rval.f != result.f || (error!=-1 && err!=error)){
+                resulted = sreturnf("(%a!=%a)", rval.f, result.f);
+                expected = sreturnf("(%a!=%a)", rval.f, result.f);
                 wrong = 1;
+			}
         break;
         case fnr_strtod:
         case fnr_wcstod:
         case fnr_sscanfd:
             if (function_nr == fnr_strtod)
-                r.val.d = strtod(nptr, &endptr);
+                rval.d = strtod(nptr, &endptr);
             else if (function_nr == fnr_wcstod)
-                r.val.d = wcstod(wnptr, &wendptr);
+                rval.d = wcstod(wnptr, &wendptr);
             else
-                ret = sscanf(nptr, "%lf", &r.val.d);
+                ret = sscanf(nptr, "%lf", &rval.d);
             err = errno;
-            sprintf(returned, "%lf", r.val.d);
-            if (r.val.d != (double)result.ld)
+            
+            if (rval.d != result.d || (error!=-1 && err!=error)){
+                resulted = sreturnf("%lf", rval.d);
+                expected = sreturnf("%lf", result.d);
                 wrong = 1;
+			}
         break;
         case fnr_strtold:
         case fnr_wcstold:
         case fnr_sscanfld:
             if (function_nr == fnr_strtold)
-                r.val.ld = strtold(nptr, &endptr);
+                rval.ld = strtold(nptr, &endptr);
             else if (function_nr == fnr_wcstold)
-                r.val.ld = wcstold(wnptr, &wendptr);
+                rval.ld = wcstold(wnptr, &wendptr);
             else
-                ret = sscanf(nptr, "%Lf", &r.val.ld);
+                ret = sscanf(nptr, "%Lf", &rval.ld);
             err = errno;
-            sprintf(returned, "%Lf", r.val.ld);
-            if (r.val.ld != (long double)result.ld)
+            
+            if (rval.ld != result.ld || (error!=-1 && err!=error)){
+                resulted = sreturnf("%Lf", rval.ld);
+                expected = sreturnf("%Lf", result.ld);
                 wrong = 1;
+			}
         break;
         case fnr_sscanfo:
         case fnr_sscanfx:
             if (function_nr == fnr_sscanfo)
-                ret = sscanf(nptr, "%o", &r.val.ui);
+                ret = sscanf(nptr, "%o", &rval.ui);
             else if (function_nr == fnr_sscanfx)
-                ret = sscanf(nptr, "%d", &r.val.ui);
+                ret = sscanf(nptr, "%d", &rval.ui);
             err = errno;
-            sprintf(returned, "%i", r.val.ui);
-            if (r.val.ui != (unsigned int)result.ull)
+            
+            if (rval.ui != result.ui || (error!=-1 && err!=error)){
+                resulted = sreturnf("%u", rval.ui);
+                expected = sreturnf("%u", result.ui);
                 wrong = 1;
+			}
         break;
         default:
             fprintf(stdout, "???%i???\n", function_nr);//---
             return 0;
         break;
     }
-    if(error != -1 && err != error)
-        wrong = 1;
     
     if (wrong) {
         s = e_name(error);
         if (!seq_has(function_nr, f_sscanf)) {
-            if (seq_has(function_nr, f_unsigned))
-              fprintf (
-                stderr,
-                "%s(\"%ls\", &endptr, %i) should return %llu, errno=%s\n",
-                f_names[function_nr], wnptr, base, result.ull, s
-              );
-            else if (seq_has(function_nr, f_decimal))
-              fprintf (
-                stderr,
-                "%s(\"%ls\", &endptr) should return %Lf, errno=%s\n",
-                f_names[function_nr], wnptr, result.ld, s
-              );
-            else
-              fprintf (
-                stderr,
-                "%s(\"%ls\", &endptr, %i) should return %lld, errno=%s\n",
-                f_names[function_nr], wnptr, base, result.ll, s
-              );
-            free(s);
-            s = e_name(err);
-            fprintf(stderr,"\tinstead, it returned %s, errno=%s\n",returned,s);
+            fprintf(stderr, "%s(\"%ls\", &endptr", f_names[function_nr],wnptr);
+            if (seq_has(function_nr, f_decimal))
+                fprintf(stderr, ", %d", base);
+            fprintf(stderr, ") should return %s, errno=%s\n", expected, s);
+            fprintf(stderr,"\tinstead, it returns");
         } else {
-            if (seq_has(function_nr, f_unsigned))
-              fprintf (
+            fprintf(
                 stderr,
-                "sscanf(\"%ls\", \"%s\", ...) should produce %llu, errno=%s\n",
-                wnptr, f_names[function_nr], result.ull, s
-              );
-            else if (seq_has(function_nr, f_decimal))
-              fprintf (
-                stderr,
-                "sscanf(\"%ls\", \"%s\", ...) should produce %Lf, errno=%s\n",
-                wnptr, f_names[function_nr], result.ld, s
-              );
-            else
-              fprintf (
-                stderr,
-                "sscanf(\"%ls\", \"%s\", ...) should produce %lld, errno=%s\n",
-                wnptr, f_names[function_nr], result.ll, s
-              );
-            free(s);
-            s = e_name(err);
-            fprintf(stderr,"\tinstead, it produced %s, errno=%s\n",returned,s);
+                "sscanf(\"%ls\", \"%s\", ...) should produce %s, errno=%s\n",
+                wnptr, f_names[function_nr], expected, s
+            );
+            fprintf(stderr,"\tinstead, it produces");
         }
         free(s);
+        fprintf(stderr, " %s, errno=%s\n", resulted, e_name(err));
+        free(resulted);
+        free(expected);
     } else if (seq_has(function_nr, f_sscanf)) {
         sscanf_return = *((int *)x);
         if (ret != sscanf_return)
         {
             fprintf (
                 stderr,
-                "sscanf(\"%ls\", \"%s\", ...) returned %d instead of %d\n",
+                "sscanf(\"%ls\", \"%s\", ...) returns %d instead of %d\n",
                 wnptr, f_names[function_nr], ret, sscanf_return
             );
         }
@@ -589,21 +579,12 @@ static int test_function(const int function_nr, const int base,
         if (off != endptr_offset)
         {
             wrong = 1;
-            if (seq_has(function_nr, f_decimal))
-                fprintf(
-                    stderr,
-                    "%s(\"%ls\", &endptr)",
-                    f_names[function_nr], wnptr
-                );
-            else
-                fprintf(
-                    stderr,
-                    "%s(\"%ls\", &endptr, %i)",
-                    f_names[function_nr], wnptr, base
-                );
+            fprintf(stderr, "%s(\"%ls\", &endptr", f_names[function_nr],wnptr);
+            if(!seq_has(function_nr, f_decimal))
+                fprintf(stderr, "%i", base);
             fprintf (
                 stderr,
-                " offsets endptr by %zu instead of %zu\n",
+                ") offsets endptr by %zu instead of by %zu\n",
                 off, endptr_offset
             );
         }
@@ -633,23 +614,6 @@ static char* e_name(int error)
 }
 
 /**
- ** A wrapper function for vsnprintf that automatically allocates space for a
- ** string and passes to it (max. 80 chars, counting the trailing '\0').
- ** \params (same as those for printf)
- ** \returns a pointer to the newly constructed string
- **/
-static char* sreturnf(const char *format, ...)
-{
-    const int s_size = 80;
-    char *s = malloc(sizeof(char)*s_size);
-    va_list ap;
-    
-    va_start(ap, format);
-    vsnprintf(s, s_size, format, ap);
-    return s;
-}
-
-/**
  ** Increments the 'absolute' value(that is, regardless of the +/- sign) of:
  ** \param s - a number passed as a string (WILL BE FREED AFTERWARDS)
  ** \returns a wide char equivalent of s
@@ -658,7 +622,8 @@ static char* sreturnf(const char *format, ...)
 static wchar_t* spp2ws(char *s)
 {
     char *sp;
-    wchar_t *ws=malloc(sizeof(wchar_t) * strlen(s));
+    int ws_size = mbstowcs(NULL, s, 0)+1;
+    wchar_t *ws = malloc(sizeof(wchar_t) * ws_size);
     int carry;
     
     for (sp=s; *(sp+1)!='\0'; ++sp);
@@ -674,7 +639,7 @@ static wchar_t* spp2ws(char *s)
         --sp;
     }
     
-    mbstowcs(ws, s, strlen(s));
+    mbstowcs(ws, s, ws_size);
     free(s);
     return ws;
 }
