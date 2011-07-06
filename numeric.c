@@ -82,6 +82,7 @@ static int test_function(const int function_nr, const int base,
                          const struct function_result result, const int error);
 static char* e_name(int error);
 static wchar_t* spp2ws(char *s);
+static char* strhex(unsigned char *object, size_t length);
 
 /**
  **  Tests [wcs|str]to* functions' and sscanf's return values when given
@@ -108,9 +109,10 @@ int main()
         f_sscanfx[]           =  {1, fnr_sscanfx},
         *f_sscanf_nonx        =  seq(fnr_sscanfumax, fnr_sscanfo);
     struct function_result
-        r_zero           = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        r_one            = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-        r_0_0625         = {.f=0.0625, .d=0.0625, .ld=0.0625};
+        r_zero    =  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        r_one     =  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+        r_0_0625  =  {.f=0.0625, .d=0.0625, .ld=0.0625L},
+        r_0_1     =  {.f=0.1,    .d=0.1,    .ld=0.1L};
     
     struct strwcsto_tests {
         int                    *function_nrs;
@@ -149,6 +151,7 @@ int main()
         //Decimal strto* tests:
         //functions          wnptr     end (bases)     result        error
         {f_strwcsto_decimal, L"0x.1",  4,  b_sixteen,  r_0_0625,     0},
+        {f_strwcsto_decimal, L".10x1", 3,  b_sixteen,  r_0_1,        0},
         //a 'non-empty sequence' missing before E/P:
         {f_strwcsto_decimal, L"e1",    0,  b_sixteen,  r_zero,       -1},
         {f_strwcsto_decimal, L"E1",    0,  b_sixteen,  r_zero,       -1},
@@ -227,33 +230,33 @@ int main()
         {f_sscanf_nonx,     L"0x-1", 1,   r_zero,  0},
     
         //Decimal sscanf tests:
-        //functions         wnptr     s_r  result          error
-        {f_sscanf_decimal,  L"0x.1",  1,   {.ld=0.062500}, 0},
-        {f_sscanf_decimal,  L".10x1", 1,   {.ld=0.1},      0},
+        //functions         wnptr     s_r  result    error
+        {f_sscanf_decimal,  L"0x.1",  1,   r_0_0625, 0},
+        {f_sscanf_decimal,  L".10x1", 1,   r_0_1,    0},
         //a 'non-empty sequence' missing before E/P:
-        {f_sscanf_decimal,  L"e1",    0,   r_zero,         0},
-        {f_sscanf_decimal,  L"E1",    0,   r_zero,         0},
-        {f_sscanf_decimal,  L"p1",    0,   r_zero,         0},
-        {f_sscanf_decimal,  L"P1",    0,   r_zero,         0},
+        {f_sscanf_decimal,  L"e1",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"E1",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"p1",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"P1",    0,   r_zero,   0},
         //missing exponent (+/- optional, the rest isn't):
-        {f_sscanf_decimal,  L"1e",    0,   r_zero,         0},
-        {f_sscanf_decimal,  L"1E",    0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1p",  0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1P",  0,   r_zero,         0},
+        {f_sscanf_decimal,  L"1e",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1E",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1p",  0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1P",  0,   r_zero,   0},
         
-        {f_sscanf_decimal,  L"1e+",   0,   r_zero,         0},
-        {f_sscanf_decimal,  L"1E+",   0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1p+", 0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1P+", 0,   r_zero,         0},
-        {f_sscanf_decimal,  L"1e-",   0,   r_zero,         0},
-        {f_sscanf_decimal,  L"1E-",   0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1p-", 0,   r_zero,         0},
-        {f_sscanf_decimal,  L"0x1P-", 0,   r_zero,         0},
+        {f_sscanf_decimal,  L"1e+",   0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1E+",   0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1p+", 0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1P+", 0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1e-",   0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1E-",   0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1p-", 0,   r_zero,   0},
+        {f_sscanf_decimal,  L"0x1P-", 0,   r_zero,   0},
         //'optional' does not make invalid:
-        {f_sscanf_decimal,  L"1e+0",  1,   r_one,          0},
-        {f_sscanf_decimal,  L"1E+0",  1,   r_one,          0},
-        {f_sscanf_decimal,  L"1e-0",  1,   r_one,          0},
-        {f_sscanf_decimal,  L"1E-0",  1,   r_one,          0},
+        {f_sscanf_decimal,  L"1e+0",  1,   r_one,    0},
+        {f_sscanf_decimal,  L"1E+0",  1,   r_one,    0},
+        {f_sscanf_decimal,  L"1e-0",  1,   r_one,    0},
+        {f_sscanf_decimal,  L"1E-0",  1,   r_one,    0},
     };
     
     failed=0;
@@ -480,8 +483,8 @@ static int test_function(const int function_nr, const int base,
             err = errno;
             
             if (rval.f != result.f || (error!=-1 && err!=error)){
-                resulted = sreturnf("(%a!=%a)", rval.f, result.f);
-                expected = sreturnf("(%a!=%a)", rval.f, result.f);
+                resulted = sreturnf("%f(%a)", rval.f, (double)rval.f);
+                expected = sreturnf("%f(%a)", result.f, (double)result.f);
                 wrong = 1;
 			}
         break;
@@ -497,8 +500,8 @@ static int test_function(const int function_nr, const int base,
             err = errno;
             
             if (rval.d != result.d || (error!=-1 && err!=error)){
-                resulted = sreturnf("%lf", rval.d);
-                expected = sreturnf("%lf", result.d);
+                resulted = sreturnf("%lf(%a)", rval.d, rval.d);
+                expected = sreturnf("%lf(%a)", result.d, result.d);
                 wrong = 1;
 			}
         break;
@@ -514,8 +517,12 @@ static int test_function(const int function_nr, const int base,
             err = errno;
             
             if (rval.ld != result.ld || (error!=-1 && err!=error)){
-                resulted = sreturnf("%Lf", rval.ld);
-                expected = sreturnf("%Lf", result.ld);
+                s = strhex((unsigned char*)&rval.ld, sizeof(rval.ld));
+                resulted = sreturnf("%Lf(%s)", rval.ld, s);
+                free(s);
+                s = strhex((unsigned char*)&result.ld, sizeof(result.ld));
+                expected = sreturnf("%Lf(%s)", result.ld, s);
+                free(s);
                 wrong = 1;
 			}
         break;
@@ -528,8 +535,8 @@ static int test_function(const int function_nr, const int base,
             err = errno;
             
             if (rval.ui != result.ui || (error!=-1 && err!=error)){
-                resulted = sreturnf("%u", rval.ui);
-                expected = sreturnf("%u", result.ui);
+                resulted = sreturnf("%u(%o)", rval.ui, rval.ui);
+                expected = sreturnf("%u(%a)", result.ui, rval.ui);
                 wrong = 1;
 			}
         break;
@@ -642,4 +649,22 @@ static wchar_t* spp2ws(char *s)
     mbstowcs(ws, s, ws_size);
     free(s);
     return ws;
+}
+
+/**
+ ** Represents bytes as a string of 'hexadecimal numerals'
+ ** \param object - pointer to the memory to be represented
+ ** \param length - the number of bytes to be processed
+ ** \returns a string with the hexadecimal representation
+ **/
+static char* strhex(unsigned char *object, size_t length)
+{
+    unsigned int i;
+    char *s = malloc(sizeof(char) * length*2+1);
+    
+    for (i=0; i<length; ++i)
+            sprintf(&s[i*2], "%.2x", object[i]);
+    s[i*2]='\0';
+    
+    return s;
 }
