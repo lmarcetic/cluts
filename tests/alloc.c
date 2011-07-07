@@ -45,7 +45,7 @@ size_t min(size_t a, size_t b);
 
 int main()
 {
-    int i, j, blocks[1];
+    int i, j, blocks[1], failed=0;
     pthread_t *pt;
     char *s, *tmps;
     void *vp;
@@ -101,6 +101,9 @@ int main()
             pthread_join(pt[i], NULL);
         fprintf(stdout, "</multithreaded>\n");//--------------
     }
+    if (errno)
+        ++failed;
+    
     /* -- calloc (size_t overflow only): -- */
     errno = 0;
     vp = (void *)1;
@@ -116,10 +119,12 @@ int main()
             else
                 fprintf(stderr, " (SIZE_MAX+1)th byte is inaccessible implying calloc underallocated\n");
                 
-            sprintf(tmps, "free following a calloc(%llu, %zu) caused a SIGABRT\n", SIZE_MAX/2, (size_t)3);
+            sprintf(tmps, "free following a calloc(%llu, %zu) caused a SIGABRT\n", (long long)SIZE_MAX/2, (size_t)3);
             errno = safe_free(vp, tmps);
         }
     }
+    if (errno)
+        ++failed;
     
     /* -- posix_memalign: -- */
     errno = 0;
@@ -158,6 +163,8 @@ int main()
             
         }
     }
+    if (errno)
+        ++failed;
     
     /* -- realloc: -- */
     errno = 0;
@@ -195,9 +202,11 @@ int main()
         
         ring = ring->next;
     }
+    if (errno)
+        ++failed;
     
     sigaction(SIGSEGV, &oldact[0], NULL);
-    return 0;
+    return failed;
 }
 
 /**

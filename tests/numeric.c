@@ -22,9 +22,8 @@
 
 /**
  ** \file
- ** depends: setlocale, malloc, free, fprintf, sprintf, vsnprintf, 
- **          va_start, va_end, strcpy, strerror, wcstombs, mbstowcs
- ** \author Luka Marčetić, 2011
+ ** depends: setlocale, malloc, free, fprintf, sprintf,
+ **          strcpy, strerror, wcstombs, mbstowcs
  **/
 
 /** used to store expected return values of tested functions (see struct tests)
@@ -260,7 +259,6 @@ int main()
     };
     
     failed=0;
-    
     //Execute strwcsto tests (decimal functions only if testing base 16 too):
     for (i=0; i<(int)(sizeof(t)/sizeof(t[0])); ++i) {
         err = 0;

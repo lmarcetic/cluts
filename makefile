@@ -7,9 +7,9 @@
 # There's ABSOLUTELY NO WARRANTY, express or implied.
 #
 
-CFLAGS = -O2 -Wall 
+CFLAGS = -O2 -Wall -Wextra
 LIBS = -lpthread -lrt -lm
-SRC = $(wildcard *.c)
+SRC = $(wildcard tests/*.c) $(wildcard *.c)
 BIN = $(SRC:.c=)
 
 %:%.c
