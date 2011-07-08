@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 	n = scandir(tests_path, &items, 0, alphasort);
 	if (n < 1) {
 		getcwd(s, 3);
-		fprintf(stderr, "No tests found at location \"%stests/\"\n", s);
+		fprintf(stderr, "No tests found at location \"%s/tests/\"\n", s);
 		return 1;
 	}
 	
@@ -50,14 +50,16 @@ int main(int argc, char *argv[])
 			wait(&returned);
 			
 			printf("The '%s' test collection ", items[i]->d_name);
-			if (returned == -1)
-				printf("CRASHED!\n");
-			else if (returned == 0)
+		    if (!WIFEXITED(returned))
+		        printf("crashed!\n");
+			else if (WEXITSTATUS(returned) == -1)
+				printf("failed to start.\n");
+			else if (WEXITSTATUS(returned) == 0)
 				printf("passed.\n");
 			else
 				printf("failed %i test(s).\n", returned);
 			
-			if (returned)
+			if (!WIFEXITED(returned) || WEXITSTATUS(returned)!=0)
 				++failed;
 		}
 	}
