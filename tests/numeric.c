@@ -79,7 +79,6 @@ enum function_nrs {
 static int test_function(const int function_nr, const int base,
                          const wchar_t *wnptr, const void *x,
                          const struct function_result result, const int error);
-static char* e_name(int error);
 static wchar_t* spp2ws(char *s);
 static char* strhex(unsigned char *object, size_t length);
 
@@ -597,25 +596,6 @@ static int test_function(const int function_nr, const int base,
     free(nptr);
     
     return wrong;
-}
-
-/**
- ** \returns a string with a human-readable error name
- ** \param error - errno to be "stringized"
- **/
-static char* e_name(int error)
-{
-    char *s = malloc(80*sizeof(char));
-    
-    if (error == -1)
-        strcpy(s, "<unspecified>");
-    else if (error == EINVAL)
-        strcpy(s, "EINVAL");
-    else if (error == ERANGE)
-        strcpy(s, "ERANGE");
-    else
-        sprintf(s, "%i(%s)", error, strerror(error));
-    return s;
 }
 
 /**
