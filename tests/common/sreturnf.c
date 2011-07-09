@@ -3,6 +3,7 @@
 #endif
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
