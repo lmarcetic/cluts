@@ -15,7 +15,9 @@ typedef struct {
     char *s;
 } String;
 
-static String *real_addslashes(const String *S,String *newS,unsigned int index);
+String addslashes(String S);
+String Strcpy(String S);
+static String*real_addslashes(const String *S,String *newS,unsigned int index);
 
 /**
  ** creates a printable "String" from the old one by copying all characters
@@ -71,5 +73,19 @@ static String *real_addslashes(const String *S,String *newS,unsigned int index)
         newS->s = malloc(newS->size+1);
         newS->s[newS->size+1] = '\0';
     }
+    return newS;
+}
+
+///makes a copy of a "String", along with its real string(via char* s)
+String Strcpy(String S)
+{
+    size_t i;
+    String newS;
+    
+    newS.s = malloc((newS.size = S.size)+1);
+    for (i=0; i<S.size; ++i)
+        newS.s[i] = S.s[i];
+    newS.s[newS.size+1] = '\0';
+    
     return newS;
 }

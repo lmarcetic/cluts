@@ -26,7 +26,7 @@ int seq_has(int key, int *sequence);
  **  Generates a sequence given bounds, and a sequence of integers to exclude
  **  \param from the lower bound
  **  \param to the upper bound
- **  \param exclude another sequence of integers to excluded from the new one
+ **  \param exclude another sequence of integers to exclude from the new one
  **  \returns a pointer to the newly created sequence.
  **/
 int* seq_x(int from, int to, int *exclude)

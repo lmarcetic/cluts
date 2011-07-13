@@ -1,4 +1,3 @@
-#define _BSD_SOURCE   //scandir, alphasort
 #include <dirent.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -47,6 +46,7 @@ int main(int argc, char *argv[])
         if (S_ISREG(status.st_mode) && !access(s, X_OK)) {
             ++all;
             printf("Executing '%s' test collection...\n", items[i]->d_name);
+            argv[0] = items[i]->d_name;
             if (!fork() && execv(s, argv)==-1)
                     return -1;
             wait(&returned);

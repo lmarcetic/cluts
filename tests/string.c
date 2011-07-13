@@ -1,4 +1,3 @@
-#define _XOPEN_SOURCE //sigaction
 #include <signal.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -55,7 +54,7 @@ int main()
 
     //call bridge_sig_jmp on segmentation fault:
     act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = 0;
+    act.sa_flags   = SA_NODEFER;
     sigaction(SIGSEGV, &act, &oldact);
     for (i=0; i<sizeof(buf_size)/sizeof(buf_size[0]); ++i) {
         //stretch to a page size:

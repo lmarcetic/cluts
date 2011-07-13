@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include <errno.h>
 #include <signal.h>
 #include <setjmp.h>
@@ -25,7 +24,7 @@
  ** \file
  ** Tests functions for writing beyond string lenght and errno's they set
  ** tests: confstr, getcwd, getdelim, gethostname, iconv, mbstowcs, snprintf,
- **        readlink, strerror_r, strptime
+ **        readlink, strerror_r, (strfmon), strftime, ttyname_r, wcstombs
  ** depends: malloc, free, strlen, mkstemp, fdopen, fileno, ftruncate,
  **          iconv_open, iconv_close, strptime, sigaction, setjmp, longjmp
  **/
@@ -51,7 +50,7 @@ int main()
         stream = fdopen(fd, "w+b");
 
     act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = 0;
+    act.sa_flags   = SA_NODEFER;
     sigaction(SIGABRT, &act, &oldact);
     sigaction(SIGSEGV, &act, &oldact);
     
@@ -178,10 +177,10 @@ int main()
                 size = strlen(s);
                 s[size-1] = '\r';
                 
-                strerror_r(1, s, size-1);
+                err = strerror_r(1, s, size-1);
                 if (s[size-1] != '\r')
                     wrong = 1;
-                else if ((err = errno) != (err_expected = ERANGE))
+                else if (err != (err_expected = ERANGE))
                     wrong = 2;
             break;
             case 10:
@@ -211,14 +210,14 @@ int main()
             case 12:
                 fun = sreturnf("ttyname_r(STDERR_FILENO, s, sizeof(s)-1)");
                 s = malloc(TTY_NAME_MAX);
-                ttyname_r(STDERR_FILENO, s, TTY_NAME_MAX);
+                err = ttyname_r(STDERR_FILENO, s, TTY_NAME_MAX);
                 size = strlen(s) + 1;
                 s[size-1] = '\r';
                 
-                ttyname_r(STDERR_FILENO, s, size-1);
+                err = ttyname_r(STDERR_FILENO, s, size-1);
                 if (s[size-1] != '\r')
                     wrong = 1;
-                else if ((err = errno) != (err_expected = ERANGE))
+                else if (err != (err_expected = ERANGE))
                     wrong = 2;
             break;
             case 13:
