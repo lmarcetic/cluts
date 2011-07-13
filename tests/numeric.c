@@ -22,7 +22,7 @@
 /**
  ** \file
  ** depends: setlocale, malloc, free, fprintf, sprintf,
- **          strcpy, wcstombs, mbstowcs
+ **          strcpy, wcstombs, mbstowcs, wcslen
  **/
 
 /** used to store expected return values of tested functions (see struct tests)
@@ -110,6 +110,23 @@ int main()
         r_one     =  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         r_0_0625  =  {.f=0.0625, .d=0.0625, .ld=0.0625L},
         r_0_1     =  {.f=0.1,    .d=0.1,    .ld=0.1L};
+    wchar_t *max[] = {
+        spp2ws(sreturnf("%jd\0",  INTMAX_MAX)),
+        spp2ws(sreturnf("%jd\0",  INTMAX_MIN)),
+        spp2ws(sreturnf("%ju\0",  UINTMAX_MAX)),
+        spp2ws(sreturnf("%ld\0",  LONG_MAX)),
+        spp2ws(sreturnf("%ld\0",  LONG_MIN)),
+        spp2ws(sreturnf("%lld\0", LLONG_MAX)),
+        spp2ws(sreturnf("%lld\0", LLONG_MIN)),
+        spp2ws(sreturnf("%lu\0",  ULONG_MAX)),
+        spp2ws(sreturnf("%llu\0", ULLONG_MAX)),
+        spp2ws(sreturnf("%f\0",   FLT_MAX)),
+        spp2ws(sreturnf("%f\0",   FLT_MIN)),
+        spp2ws(sreturnf("%lf\0",  DBL_MAX)),
+        spp2ws(sreturnf("%lf\0",  DBL_MIN)),
+        spp2ws(sreturnf("%Lf\0",  LDBL_MAX)),
+        spp2ws(sreturnf("%Lf\0",  LDBL_MIN))
+    };
     
     struct strwcsto_tests {
         int                    *function_nrs;
@@ -175,23 +192,23 @@ int main()
         {f_strwcsto_decimal, L"1E-0",  4,  b_sixteen,  r_one,        0},
     
         //Min/max value tests of individual functions(code's wide here,i know):
-        //functions                               wnptr                                 end bases      result               error
-        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  spp2ws(sreturnf("%jd",  INTMAX_MAX)),  0, b_zero,    {.it = INTMAX_MAX},  ERANGE},
-        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  spp2ws(sreturnf("%jd",  INTMAX_MIN)),  0, b_zero,    {.it = INTMAX_MIN},  ERANGE},
-        {(int[]){2,fnr_strtoumax,fnr_wcstoumax},  spp2ws(sreturnf("%ju",  UINTMAX_MAX)), 0, b_zero,    {.ut = UINTMAX_MAX}, ERANGE},
-        {(int[]){2,fnr_strtol,   fnr_wcstol},     spp2ws(sreturnf("%ld",  LONG_MAX)),    0, b_zero,    {.l  = LONG_MAX},    ERANGE},
-        {(int[]){2,fnr_strtol,   fnr_wcstol},     spp2ws(sreturnf("%ld",  LONG_MIN)),    0, b_zero,    {.l  = LONG_MIN},    ERANGE},
-        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    spp2ws(sreturnf("%lld", LLONG_MAX)),   0, b_zero,    {.ll = LLONG_MAX},   ERANGE},
-        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    spp2ws(sreturnf("%lld", LLONG_MIN)),   0, b_zero,    {.ll = LLONG_MIN},   ERANGE},
-        {(int[]){2,fnr_strtoul,  fnr_wcstoul},    spp2ws(sreturnf("%lu",  ULONG_MAX)),   0, b_zero,    {.ul = ULONG_MAX},   ERANGE},
-        {(int[]){2,fnr_strtoull, fnr_wcstoull},   spp2ws(sreturnf("%llu", ULLONG_MAX)),  0, b_zero,    {.ull= ULLONG_MAX},  ERANGE},
+        //functions                               wnptr     end              bases      result               error
+        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  max[0],   wcslen(max[0]),  b_zero,    {.it = INTMAX_MAX},  ERANGE},
+        {(int[]){2,fnr_strtoimax,fnr_wcstoimax},  max[1],   wcslen(max[1]),  b_zero,    {.it = INTMAX_MIN},  ERANGE},
+        {(int[]){2,fnr_strtoumax,fnr_wcstoumax},  max[2],   wcslen(max[2]),  b_zero,    {.ut = UINTMAX_MAX}, ERANGE},
+        {(int[]){2,fnr_strtol,   fnr_wcstol},     max[3],   wcslen(max[3]),  b_zero,    {.l  = LONG_MAX},    ERANGE},
+        {(int[]){2,fnr_strtol,   fnr_wcstol},     max[4],   wcslen(max[4]),  b_zero,    {.l  = LONG_MIN},    ERANGE},
+        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    max[5],   wcslen(max[5]),  b_zero,    {.ll = LLONG_MAX},   ERANGE},
+        {(int[]){2,fnr_strtoll,  fnr_wcstoll},    max[6],   wcslen(max[6]),  b_zero,    {.ll = LLONG_MIN},   ERANGE},
+        {(int[]){2,fnr_strtoul,  fnr_wcstoul},    max[7],   wcslen(max[7]),  b_zero,    {.ul = ULONG_MAX},   ERANGE},
+        {(int[]){2,fnr_strtoull, fnr_wcstoull},   max[8],   wcslen(max[8]),  b_zero,    {.ull= ULLONG_MAX},  ERANGE},
         
-        {(int[]){2,fnr_strtof,   fnr_wcstof},     spp2ws(sreturnf("%f",   FLT_MAX)),     0, b_sixteen, {.f  = HUGE_VALF},   ERANGE},
-        {(int[]){2,fnr_strtof,   fnr_wcstof},     spp2ws(sreturnf("%f",   FLT_MIN)),     0, b_sixteen, {.f  = -HUGE_VALF},  ERANGE},
-        {(int[]){2,fnr_strtod,   fnr_wcstod},     spp2ws(sreturnf("%lf",  DBL_MAX)),     0, b_sixteen, {.d  = HUGE_VAL},    ERANGE},
-        {(int[]){2,fnr_strtod,   fnr_wcstod},     spp2ws(sreturnf("%lf",  DBL_MIN)),     0, b_sixteen, {.d  = -HUGE_VAL},   ERANGE},
-        {(int[]){2,fnr_strtold,  fnr_wcstold},    spp2ws(sreturnf("%Lf",  LDBL_MAX)),    0, b_sixteen, {.ld = HUGE_VALL},   ERANGE},
-        {(int[]){2,fnr_strtold,  fnr_wcstold},    spp2ws(sreturnf("%Lf",  LDBL_MIN)),    0, b_sixteen, {.ld = -HUGE_VALL},  ERANGE},
+        {(int[]){2,fnr_strtof,   fnr_wcstof},     max[9],   wcslen(max[9]),  b_sixteen, {.f  = HUGE_VALF},   ERANGE},
+        {(int[]){2,fnr_strtof,   fnr_wcstof},     max[10],  wcslen(max[10]), b_sixteen, {.f  = -HUGE_VALF},  ERANGE},
+        {(int[]){2,fnr_strtod,   fnr_wcstod},     max[11],  wcslen(max[11]), b_sixteen, {.d  = HUGE_VAL},    ERANGE},
+        {(int[]){2,fnr_strtod,   fnr_wcstod},     max[12],  wcslen(max[12]), b_sixteen, {.d  = -HUGE_VAL},   ERANGE},
+        {(int[]){2,fnr_strtold,  fnr_wcstold},    max[13],  wcslen(max[13]), b_sixteen, {.ld = HUGE_VALL},   ERANGE},
+        {(int[]){2,fnr_strtold,  fnr_wcstold},    max[14],  wcslen(max[14]), b_sixteen, {.ld = -HUGE_VALL},  ERANGE},
     };
     
     struct sscanf_tests {
