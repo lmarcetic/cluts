@@ -1,5 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
+#include <signal.h>
+#include <setjmp.h>
 #include "common/common.h"
 #include <string.h>   //strerror_r
 #include <limits.h>   //PATH_MAX
@@ -18,15 +20,18 @@
  *
  * There's ABSOLUTELY NO WARRANTY, express or implied.
  */
- 
+
 /**
  ** \file
  ** Tests functions for writing beyond string lenght and errno's they set
  ** tests: confstr, getcwd, getdelim, gethostname, iconv, mbstowcs, snprintf,
  **        readlink, strerror_r, strptime
- ** depends: malloc, free, strlen, mkstemp, fileno, ftruncate,
- **          iconv_open, iconv_close, fdopen, strptime
+ ** depends: malloc, free, strlen, mkstemp, fdopen, fileno, ftruncate,
+ **          iconv_open, iconv_close, strptime, sigaction, setjmp, longjmp
  **/
+
+jmp_buf env;
+void bridge_sig_jmp(int sig);
 int main()
 {
     int function, wrong, failed, err, err_expected;
@@ -37,18 +42,26 @@ int main()
     FILE *stream = NULL;
     int fd;
     struct tm tm;
+    struct sigaction oldact, act;
+    int sig;
     // numbers of those functions that depend on the temporary file:
     int ffun[] = {2, 3,8,12};
-    
+
     if ((fd = mkstemp(filename)) != -1)
         stream = fdopen(fd, "w+b");
+
+    act.sa_handler = bridge_sig_jmp;
+    act.sa_flags   = SA_NODEFER;
+    sigaction(SIGABRT, &act, &oldact);
+    sigaction(SIGSEGV, &act, &oldact);
     
     failed = 0;
     function = 1;
     do {
-        err = wrong = 0;
-        s = fun = NULL;
-        ws = NULL;
+      err = wrong = 0;
+      s = fun = NULL;
+      ws = NULL;
+      if (!(sig = setjmp(env))) {
         switch(function) {
             case 1:
                 fun = sreturnf("confstr(_CS_PATH, s, sizeof(s)-1)");
@@ -159,9 +172,9 @@ int main()
                     wrong = 1;
             break;
             case 9:
-                /*fun = sreturnf("strerror_r(1, s, sizeof(s)-1)");
+                fun = sreturnf("strerror_r(1, s, sizeof(s)-1)");
                 s = malloc(80);
-                strerror_r(1, s, size-1); //glibc fail
+                strerror_r(1, s, 80);
                 size = strlen(s);
                 s[size-1] = '\r';
                 
@@ -169,7 +182,7 @@ int main()
                 if (s[size-1] != '\r')
                     wrong = 1;
                 else if ((err = errno) != (err_expected = ERANGE))
-                    wrong = 2;*/
+                    wrong = 2;
             break;
             case 10:
                 /*fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
@@ -244,7 +257,29 @@ int main()
         free(ws);
         free(fun);
         free(s);
+      }else if (sig == SIGABRT) {
+        fprintf(
+            stderr,
+            "Test nr. %i caused SIGABRT, likely a free() failure: A pointer"
+            " passed to a function might be errorneously redirected.\n",
+            function
+        );
+        ++failed;
+      }
+      else if (sig == SIGSEGV) {
+        fprintf(stderr, "Test nr. %i caused SIGSEGV\n", function);
+        ++failed;
+      }
     } while(function++);
     
     return failed;
+}
+
+/**
+ ** A bridge function for sigaction(), jumps via longjmp() back to a setjmp()
+ **/
+void bridge_sig_jmp(int sig)
+{
+    longjmp(env, sig);
+    return;
 }
