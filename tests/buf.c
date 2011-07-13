@@ -51,7 +51,7 @@ int main()
         stream = fdopen(fd, "w+b");
 
     act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = SA_NODEFER;
+    act.sa_flags   = 0;
     sigaction(SIGABRT, &act, &oldact);
     sigaction(SIGSEGV, &act, &oldact);
     

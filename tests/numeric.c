@@ -23,7 +23,7 @@
 /**
  ** \file
  ** depends: setlocale, malloc, free, fprintf, sprintf,
- **          strcpy, strerror, wcstombs, mbstowcs
+ **          strcpy, wcstombs, mbstowcs
  **/
 
 /** used to store expected return values of tested functions (see struct tests)

@@ -1,3 +1,4 @@
+#define _BSD_SOURCE   //scandir, alphasort
 #include <dirent.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -5,6 +6,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <limits.h>   //PATH_MAX
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -57,7 +59,7 @@ int main(int argc, char *argv[])
             else if (WEXITSTATUS(returned) == 0)
                 printf("passed.\n");
             else
-                printf("failed %i test(s).\n", returned);
+                printf("failed %i test(s).\n", WEXITSTATUS(returned));
             
             if (!WIFEXITED(returned) || WEXITSTATUS(returned)!=0)
                 ++failed;

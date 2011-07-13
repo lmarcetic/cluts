@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L //sigaction
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -57,7 +58,7 @@ int main()
     sem_t sem; ///< semaphore is used for thread mutex
 
     act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = SA_NODEFER;
+    act.sa_flags   = 0;
     sigaction(SIGSEGV, &act, &oldact[0]);
     
     //make a head element for the ring-queue which will hold info about blocks:
@@ -230,7 +231,7 @@ int safe_free(void *vp, char *err_msg)
 {
         struct sigaction oldact, act;
         act.sa_handler = bridge_sig_jmp;
-        act.sa_flags   = SA_NODEFER;
+        act.sa_flags   = 0;
         
         sigaction(SIGABRT, &act, &oldact);
         if (!setjmp(env[1]))

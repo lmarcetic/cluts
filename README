@@ -1,1 +1,6 @@
-This is to be yet another c.l.u.t.s.
+C Library Unit Test Suite
+
+Install:
+	make
+Run:
+	./cluts
