@@ -544,7 +544,7 @@ static int test_function(const int function_nr, const int base,
             if (function_nr == fnr_sscanfo)
                 ret = sscanf(nptr, "%o", &rval.ui);
             else if (function_nr == fnr_sscanfx)
-                ret = sscanf(nptr, "%d", &rval.ui);
+                ret = sscanf(nptr, "%x", &rval.ui);
             err = errno;
             
             if (rval.ui != result.ui || (error!=-1 && err!=error)){
