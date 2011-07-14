@@ -359,7 +359,7 @@ static int test_function(const int function_nr, const int base,
             "%lf",
             "%Lf",
             "%o",
-            "%u"
+            "%x"
         };
     ///remembering return values
     struct function_result rval;
