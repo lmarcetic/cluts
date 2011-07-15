@@ -94,9 +94,10 @@ int main()
         b_zero[]           =  {1, 0},
         b_sixteen[]        =  {1, 16},
         b_hexadecimal[]    =  {2, 0,16},
+        b_x[]              =  {1, 34},
         *b_nothexadecimal  =  seq_x(0,33, b_hexadecimal),
         *b_lessthanx       =  seq(0,33),
-        *b_xandabove       =  seq(33,36),
+        *b_xandabove       =  seq(34,36),
         *b_all             =  seq(0,36);
     int
         *f_strwcsto           =  seq(fnr_strtoumax, fnr_wcstold),
@@ -110,6 +111,8 @@ int main()
         r_zero      =  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         r_one       =  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         r_thirty    =  {30,30,30,30,30,30,30,30,30,30},
+        r_x         =  {33,33,33,33,33,33,33,33,33,33},
+        r_x0        =  {67,67,67,67,67,67,67,67,67,67},
         r_0_0625    =  {.f=0.0625, .d=0.0625, .ld=0.0625L},
         r_0_1       =  {.f=0.1,    .d=0.1,    .ld=0.1L};
     wchar_t *max[] = {
@@ -162,8 +165,10 @@ int main()
         {f_strwcsto,  L"00x1", 2,   b_lessthanx,      r_zero,  0},
         {f_strwcsto,  L"0X0x", 1,   b_nothexadecimal, r_zero,  0},
         //Not a hex value (x is 33):
-        {f_strwcsto,  L"0x0",  3,   b_xandabove,      r_zero,  0},
-        {f_strwcsto,  L"0X0",  3,   b_xandabove,      r_zero,  0},
+        {f_strwcsto,  L"0x",   2,   b_xandabove,      r_x,     0},
+        {f_strwcsto,  L"0X",   2,   b_xandabove,      r_x,     0},
+        {f_strwcsto,  L"0x0",  3,   b_x,              r_x0,    0},
+        {f_strwcsto,  L"0X0",  3,   b_x,              r_x0,    0},
     
         //Decimal strto* tests(NOTE: base 16 is faux, behavior is more like 0):
         //functions          wnptr     end (bases)     result        error
