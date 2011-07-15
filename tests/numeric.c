@@ -95,6 +95,8 @@ int main()
         b_sixteen[]        =  {1, 16},
         b_hexadecimal[]    =  {2, 0,16},
         *b_nothexadecimal  =  seq_x(0,33, b_hexadecimal),
+        *b_lessthanx       =  seq(0,33),
+        *b_xandabove       =  seq(33,36),
         *b_all             =  seq(0,36);
     int
         *f_strwcsto           =  seq(fnr_strtoumax, fnr_wcstold),
@@ -141,21 +143,27 @@ int main()
         {f_strwcsto,  L"0 1",  1,   b_all,            r_zero,  0},
         {f_strwcsto,  L"01",   2,   b_all,            r_one,   0},
         {f_strwcsto,  L"0+1",  1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0-1",  1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0X0x", 1,   b_nothexadecimal, r_zero,  0},        
+        {f_strwcsto,  L"0-1",  1,   b_all,            r_zero,  0},      
         //standard says to match the first char making the rest invalid:
         {f_strwcsto,  L"- 1",  0,   b_all,            r_zero,  -1},
         {f_strwcsto,  L"--1",  0,   b_all,            r_zero,  -1},
         {f_strwcsto,  L"-+1",  0,   b_all,            r_zero,  -1},
         {f_strwcsto,  L"+-1",  0,   b_all,            r_zero,  -1},
+        
+        //Non-base-X strto* tests, and explicitly base >=X tests:
+        //functions   wnptr    end  bases             result   error
         //the 'longest initial subsequence OF THE EXPECTED FORM' is "?0"
-        {f_strwcsto,  L"0x",   1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0xX",  1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0Xx",  1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0x 1", 1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0x+1", 1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"0x-1", 1,   b_all,            r_zero,  0},
-        {f_strwcsto,  L"00x1", 2,   b_all,            r_zero,  0},
+        {f_strwcsto,  L"0x",   1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0xX",  1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0Xx",  1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0x 1", 1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0x+1", 1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0x-1", 1,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"00x1", 2,   b_lessthanx,      r_zero,  0},
+        {f_strwcsto,  L"0X0x", 1,   b_nothexadecimal, r_zero,  0},
+        //Not a hex value (x is 33):
+        {f_strwcsto,  L"0x0",  3,   b_xandabove,      r_zero,  0},
+        {f_strwcsto,  L"0X0",  3,   b_xandabove,      r_zero,  0},
     
         //Decimal strto* tests(NOTE: base 16 is faux, behavior is more like 0):
         //functions          wnptr     end (bases)     result        error
@@ -165,7 +173,7 @@ int main()
         {f_strwcsto_decimal, L"0x1e",  4,  b_sixteen,  r_thirty,     0},
         {f_strwcsto_decimal, L"0x1E",  4,  b_sixteen,  r_thirty,     0},
         //a 'non-empty sequence' missing before E/P: this is not hexadecimal,
-        //hexadecimal for 'decimal' functions needs an obligatory "0x" prefix:
+        //hexadecimal for 'decimal' functions invariably has a "0x" prefix:
         {f_strwcsto_decimal, L"e1",    0,  b_sixteen,  r_zero,       -1},
         {f_strwcsto_decimal, L"E1",    0,  b_sixteen,  r_zero,       -1},
         {f_strwcsto_decimal, L"p1",    0,  b_sixteen,  r_zero,       -1},
@@ -231,13 +239,13 @@ int main()
         {f_sscanf,          L"--1",  0,   r_zero,  -1},
         {f_sscanf,          L"-+1",  0,   r_zero,  -1},
         {f_sscanf,          L"+-1",  0,   r_zero,  -1},
-        //the 'longest initial subsequence' is the invalid "0x":
-        {f_sscanfx,         L"0x",   0,   r_zero,  -1},
-        {f_sscanfx,         L"0x 1", 0,   r_zero,  -1},
-        {f_sscanfx,         L"0x+1", 0,   r_zero,  -1},
-        {f_sscanfx,         L"0x-1", 0,   r_zero,  -1},
-        {f_sscanfx,         L"0Xx",  0,   r_zero,  -1},
-        {f_sscanfx,         L"0xX",  0,   r_zero,  -1},
+        //the 'longest initial subsequence OF THE EXPECTED FORM' is "0"
+        {f_sscanfx,         L"0x",   1,   r_zero,  0},
+        {f_sscanfx,         L"0x 1", 1,   r_zero,  0},
+        {f_sscanfx,         L"0x+1", 1,   r_zero,  0},
+        {f_sscanfx,         L"0x-1", 1,   r_zero,  0},
+        {f_sscanfx,         L"0Xx",  1,   r_zero,  0},
+        {f_sscanfx,         L"0xX",  1,   r_zero,  0},
         //should be a valid zero interpreted as a non-16 base number:
         {f_sscanf_nonx,     L"0xX",  1,   r_zero,  0},
         {f_sscanf_nonx,     L"0Xx",  1,   r_zero,  0},
@@ -249,24 +257,24 @@ int main()
         {f_sscanf_decimal,  L"0x.1",  1,   r_0_0625, 0},
         {f_sscanf_decimal,  L".10x1", 1,   r_0_1,    0},
         //a 'non-empty sequence' missing before E/P:
-        {f_sscanf_decimal,  L"e1",    0,   r_zero,   0},
-        {f_sscanf_decimal,  L"E1",    0,   r_zero,   0},
-        {f_sscanf_decimal,  L"p1",    0,   r_zero,   0},
-        {f_sscanf_decimal,  L"P1",    0,   r_zero,   0},
+        {f_sscanf_decimal,  L"e1",    0,   r_zero,   -1},
+        {f_sscanf_decimal,  L"E1",    0,   r_zero,   -1},
+        {f_sscanf_decimal,  L"p1",    0,   r_zero,   -1},
+        {f_sscanf_decimal,  L"P1",    0,   r_zero,   -1},
         //missing exponent (+/- optional, the rest isn't):
-        {f_sscanf_decimal,  L"1e",    0,   r_zero,   0},
-        {f_sscanf_decimal,  L"1E",    0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1p",  0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1P",  0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1e",    1,   r_one,    0},
+        {f_sscanf_decimal,  L"1E",    1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1p",  1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1P",  1,   r_one,    0},
         
-        {f_sscanf_decimal,  L"1e+",   0,   r_zero,   0},
-        {f_sscanf_decimal,  L"1E+",   0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1p+", 0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1P+", 0,   r_zero,   0},
-        {f_sscanf_decimal,  L"1e-",   0,   r_zero,   0},
-        {f_sscanf_decimal,  L"1E-",   0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1p-", 0,   r_zero,   0},
-        {f_sscanf_decimal,  L"0x1P-", 0,   r_zero,   0},
+        {f_sscanf_decimal,  L"1e+",   1,   r_one,    0},
+        {f_sscanf_decimal,  L"1E+",   1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1p+", 1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1P+", 1,   r_one,    0},
+        {f_sscanf_decimal,  L"1e-",   1,   r_one,    0},
+        {f_sscanf_decimal,  L"1E-",   1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1p-", 1,   r_one,    0},
+        {f_sscanf_decimal,  L"0x1P-", 1,   r_one,    0},
         //'optional' does not make invalid:
         {f_sscanf_decimal,  L"1e+0",  1,   r_one,    0},
         {f_sscanf_decimal,  L"1E+0",  1,   r_one,    0},
@@ -493,7 +501,7 @@ static int test_function(const int function_nr, const int base,
             else if (function_nr == fnr_wcstof)
                 rval.f = wcstof(wnptr, &wendptr);
             else
-                ret = sscanf("1e-", "%f", &rval.f);
+                ret = sscanf(nptr, "%f", &rval.f);
             err = errno;
             
             if (rval.f != result.f || (error!=-1 && err!=error)){
@@ -600,7 +608,7 @@ static int test_function(const int function_nr, const int base,
         if (off != endptr_offset)
         {
             wrong = 1;
-            fprintf(stderr, "%s(\"%ls\", &endptr", f_names[function_nr],wnptr);
+            fprintf(stderr,"%s(\"%ls\", &endptr, ",f_names[function_nr],wnptr);
             if(!seq_has(function_nr, f_decimal))
                 fprintf(stderr, "%i", base);
             fprintf (
