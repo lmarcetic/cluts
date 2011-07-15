@@ -112,7 +112,7 @@ int main()
         r_one       =  {1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         r_thirty    =  {30,30,30,30,30,30,30,30,30,30},
         r_x         =  {33,33,33,33,33,33,33,33,33,33},
-        r_x0        =  {67,67,67,67,67,67,67,67,67,67},
+        r_x0        =  {1122,1122,1122,1122,1122,1122,1122,1122,1122,1122},
         r_0_0625    =  {.f=0.0625, .d=0.0625, .ld=0.0625L},
         r_0_1       =  {.f=0.1,    .d=0.1,    .ld=0.1L};
     wchar_t *max[] = {
@@ -577,7 +577,7 @@ static int test_function(const int function_nr, const int base,
         s = e_name(error);
         if (!seq_has(function_nr, f_sscanf)) {
             fprintf(stderr, "%s(\"%ls\", &endptr", f_names[function_nr],wnptr);
-            if (seq_has(function_nr, f_decimal))
+            if (!seq_has(function_nr, f_decimal))
                 fprintf(stderr, ", %d", base);
             fprintf(stderr, ") should return %s, errno=%s\n", expected, s);
             fprintf(stderr,"\tinstead, it returns");
