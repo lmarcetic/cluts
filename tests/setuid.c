@@ -24,21 +24,21 @@
 
 /** \file tests the setuid/getuid combo in a threaded environment
  ** depends:
- ** setuid, getuid, setrlimit, fork, wait, waitpid, sleep, fprintf, mmap, open
- ** pthread_create, pthread_join, sem_wait, sem_post, pipe, read
+ ** open, close, fprintf, setrlimit, mmap, sem_init, sem_post, sem_wait, pipe,
+ ** fork, waitpid, wait, sched_yield, read, pthread_create, pthread_join
  **/
  
-sem_t *sem; //will point to two semaphores
-int pfd[2]; //will hold file pointers for pipe-based synchronization
+sem_t *sem; //will point to a shared semaphore
+int pfd[2]; //will hold file pointers for pipe-based process synchronization
 static void* set_uid(void *uid);
 
 int main()
 {
     //tweaking done here:
     const uid_t           uid        = MAXUID-4;
-    const struct rlimit   nproc      = {100, 100};
+    const struct rlimit   nproc      = {78, 78};
     const unsigned int    nr_threads = nproc.rlim_cur,
-                          nr_tries   = 100,
+                          nr_tries   = 10,
                           max_spins  = 1000;
     const int             fd         = open("/dev/zero", O_RDWR);
     uid_t           uids[nr_threads];
@@ -53,10 +53,9 @@ int main()
         return 1;
     }
     setrlimit(RLIMIT_NPROC, &nproc);
-    foo = mmap(NULL, sizeof(int),     PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    sem = mmap(NULL, sizeof(sem_t)*2, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-    sem_init(&sem[0], 1, 0);
-    sem_init(&sem[1], 1, 0);
+    foo = mmap(NULL, sizeof(int),   PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    sem = mmap(NULL, sizeof(sem_t), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+    sem_init(sem, 1, 0);
     
     ret = 0;
     for (j=0; j<nr_tries && ret<=0; ++j) {
@@ -66,7 +65,7 @@ int main()
             //spawn slot squatting processes:
             for (i=0; i<nproc.rlim_cur && !fork(); ++i) {
                 setuid(uid);
-                sem_post(&sem[1]);    //ready
+                sem_post(sem);        //ready
                 read(pfd[0], NULL, 1);//wait
                 if (j%2 == 0)
                     sched_yield();
@@ -75,11 +74,11 @@ int main()
             }
             //spawn the threaded process:
             if (!(pid = fork())) {
-                mismatch = ret = 0; //reusing!
+                mismatch = ret = 0;   //reuse
                 for (i=0; i<nproc.rlim_cur; ++i)
                     pthread_create(&tid[i], NULL, set_uid, &uids[i]);
                 
-                sem_post(&sem[1]);    //ready
+                sem_post(sem);        //ready
                 read(pfd[0], NULL, 1);//wait
                 for(i=0; i<k; ++i)
                     *foo ^= i;        //waste cycles
@@ -98,9 +97,9 @@ int main()
                             fprintf(stderr,
                                 "getuid per thread(non-root='.', root='0'): \n["
                             );
-                            mismatch = 0; //reusing!
+                            mismatch = 0; //reuse!
                             for (i=0; i<nproc.rlim_cur; ++i) {
-                                fprintf (stderr, "%c", *(".0"+(uids[i] == 0)));
+                                fprintf(stderr, "%c", *(".0"+(uids[i] == 0)));
                                 if (uids[i] == 0)
                                     ++mismatch;
                             }
@@ -114,8 +113,8 @@ int main()
                 return ret;
             }
             //wait for both proceses to become ready:
-            sem_wait(&sem[1]);
-            sem_wait(&sem[1]);
+            sem_wait(sem);
+            sem_wait(sem);
             //allow them to continue:
             close(pfd[0]);
             //wait for them to finish, evaluate threaded process' return value:
@@ -148,10 +147,10 @@ int main()
                 j, k, ret, (int)nproc.rlim_cur
             );
     }
-    printf("%s", ("\0\0"+(*foo%j))); //necessary for the time wasting loop
+    fprintf(stdout,"%s",("\0\0"+(*foo%2)));//necessary for the cycle-wasting loop
     return (ret == 0);
 }
-//waits for pdf[0] to close, then sets a void* to the value of getuid
+//waits for pfd[0] to close, then sets a void* to the value of getuid
 static void* set_uid(void *uid)
 {
     read(pfd[0], uid, 1);//wait
