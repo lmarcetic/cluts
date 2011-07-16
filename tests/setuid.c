@@ -25,11 +25,13 @@
 /** \file tests the setuid/getuid combo in a threaded environment
  ** depends:
  ** open, close, fprintf, setrlimit, mmap, sem_init, sem_post, sem_wait, pipe,
- ** fork, waitpid, wait, sched_yield, read, pthread_create, pthread_join
+ ** fork, waitpid, wait, sched_yield, read, pthread_create, pthread_join,
+ ** pthread_barrier_init, pthread_barrier_wait
  **/
  
 sem_t *sem; //will point to a shared semaphore
 int pfd[2]; //will hold file pointers for pipe-based process synchronization
+pthread_barrier_t barrier; //pointer to a barrier for the threads
 static void* set_uid(void *uid);
 
 int main()
@@ -37,8 +39,8 @@ int main()
     //tweaking done here:
     const uid_t           uid        = MAXUID-4;
     const struct rlimit   nproc      = {78, 78};
-    const unsigned int    nr_threads = nproc.rlim_cur,
-                          nr_tries   = 10,
+    const unsigned int    nr_threads = nproc.rlim_cur/2,
+                          nr_tries   = 1,
                           max_spins  = 1000;
     const int             fd         = open("/dev/zero", O_RDWR);
     uid_t           uids[nr_threads];
@@ -59,14 +61,15 @@ int main()
     
     ret = 0;
     for (j=0; j<nr_tries && ret<=0; ++j) {
+        fprintf(stdout, "\r%i/%i", j+1, nr_tries);
         for (k=0; k<max_spins && ret<=0; ++k) {
             pipe(pfd);
-            close(pfd[1]);
             //spawn slot squatting processes:
             for (i=0; i<nproc.rlim_cur && !fork(); ++i) {
+                close(pfd[0]);
                 setuid(uid);
-                sem_post(sem);        //ready
-                read(pfd[0], NULL, 1);//wait
+                sem_post(sem);         //ready
+                read(pfd[0], NULL, 1); //wait
                 if (j%2 == 0)
                     sched_yield();
                 
@@ -74,17 +77,20 @@ int main()
             }
             //spawn the threaded process:
             if (!(pid = fork())) {
-                mismatch = ret = 0;   //reuse
-                for (i=0; i<nproc.rlim_cur; ++i)
+                close(pfd[0]);
+                mismatch = ret = 0; //reuse
+                pthread_barrier_init(&barrier, NULL, nr_threads+1);
+                for (i=0; i<nr_threads; ++i)
                     pthread_create(&tid[i], NULL, set_uid, &uids[i]);
                 
-                sem_post(sem);        //ready
-                read(pfd[0], NULL, 1);//wait
+                sem_post(sem);         //ready
+                read(pfd[0], NULL, 1); //wait
                 for(i=0; i<k; ++i)
-                    *foo ^= i;        //waste cycles
+                    *foo ^= i;                  //waste cycles
                 failed_setuid = setuid(uid);
+                pthread_barrier_wait(&barrier); //run threads
                 
-                for (i=0; i<nproc.rlim_cur; ++i) {
+                for (i=0; i<nr_threads; ++i) {
                     pthread_join(tid[i], NULL);
                     if (uids[0] != uids[i])
                         mismatch = 1;
@@ -92,18 +98,17 @@ int main()
                 if (mismatch) {
                     ret = -1;
                     if (!failed_setuid) {
-                        for (i=0; i<nproc.rlim_cur && uids[i]!=0; ++i);
-                        if (i < nproc.rlim_cur) {
+                        for (i=0; i<nr_threads && uids[i]!=0; ++i);
+                        if (i < nr_threads) {
                             fprintf(stderr,
                                 "getuid per thread(non-root='.', root='0'): \n["
                             );
-                            mismatch = 0; //reuse!
-                            for (i=0; i<nproc.rlim_cur; ++i) {
+                            ret = 0; //will reflect the number of uid=0 threads:
+                            for (i=0; i<nr_threads; ++i) {
                                 fprintf(stderr, "%c", *(".0"+(uids[i] == 0)));
                                 if (uids[i] == 0)
-                                    ++mismatch;
+                                    ++ret;
                             }
-                            ret = mismatch;
                             fprintf(stderr, "]\n");
                         }
                     }
@@ -116,7 +121,8 @@ int main()
             sem_wait(sem);
             sem_wait(sem);
             //allow them to continue:
-            close(pfd[0]);
+            close(pfd[1]);
+            
             //wait for them to finish, evaluate threaded process' return value:
             waitpid(pid, &stat, 0);
             if(WIFEXITED(stat)) {
@@ -134,26 +140,25 @@ int main()
             fprintf(
                 stderr,
                 "getuid returned differing values in threads"
-                " created by a setuid-calling process\n"
+                " created by a setuid-calling process"
             );
         else if (ret == -2)
-            fprintf(stderr, "A child process that spawned threads crashed!\n");
+            fprintf(stderr, "A child process that spawned threads crashed!");
         else
             fprintf(
                 stderr,
-                "<Try %u, iteration %u> Process' call to setuid() succeeded,"
-                " but %i/%i of its threads still reported getuid() == 0(root)!"
-                "\n",
+                "<Try %u, iteration %u>Process' call to setuid() succeeded,\n"
+                "but %i/%i of its threads still reported getuid() == 0(root)!",
                 j, k, ret, (int)nproc.rlim_cur
             );
     }
-    fprintf(stdout,"%s",("\0\0"+(*foo%2)));//necessary for the cycle-wasting loop
+    fprintf(stdout,"%s",("\n\n"+(*foo%2)));//necessary for the cycle-wasting loop
     return (ret == 0);
 }
 //waits for pfd[0] to close, then sets a void* to the value of getuid
 static void* set_uid(void *uid)
 {
-    read(pfd[0], uid, 1);//wait
+    pthread_barrier_wait(&barrier); //wait for setuid from the main thread
     *(uid_t*)uid = getuid();
     return NULL;
 }
