@@ -34,7 +34,7 @@ static void* gotuid(void *foo);
 
 int main()
 {
-    const unsigned int    max_tries = 1000;
+    const unsigned int    max_tries = 10000;
     const struct rlimit   nproc     = {10, 10};
     const uid_t           uid       = MAXUID-4;
     unsigned int    i, j, mismatch;
@@ -93,12 +93,14 @@ int main()
             if (mismatch) {
                 ret = -1;
                 if (!uidset) {
-                    fprintf(stderr, "thread mask: [");
-                    for (i=0; i<nproc.rlim_cur; ++i)
-                        fprintf (stderr, "%c", *(".0"+(i==0))); //lul
-                    fprintf(stderr, "] root='0', non-root='.'\n");
-                    if (uids[i] == 0)
+                    for (i=0; i<nproc.rlim_cur && uids[i]!=0; ++i);
+                    if (i < nproc.rlim_cur) {
+                        fprintf(stderr, "getuid() per threads: [");
+                        for (; i<nproc.rlim_cur; ++i)
+                            fprintf (stderr, "%c", *(".0"+(uids[i] == 0)));
+                        fprintf(stderr, "] (non-root='.', root='0')\n");
                         ret = 1;
+                    }
                 }
             }
             else
