@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include <stdint.h>  //int8_t, uintptr_t
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -33,25 +34,24 @@ static void* gotuid(void *foo);
 
 int main()
 {
-    unsigned int    max_tries = 100000;
-    struct rlimit   nproc = {10, 10};
-    uid_t           uid = MAXUID-4;
-    int             stat, failed, fd = open("/dev/zero", O_RDWR);
+    const unsigned int    max_tries = 1000;
+    const struct rlimit   nproc     = {10, 10};
+    const uid_t           uid       = MAXUID-4;
+    unsigned int    i, j, mismatch;
+    int             stat, uidset, fd = open("/dev/zero", O_RDWR);
     pid_t           pid;
     pthread_t       tid[nproc.rlim_cur];
-    void            *ret[2];
-    unsigned int    i, j;
+    uid_t           uids[nproc.rlim_cur];
+    int8_t          ret;
     
     if (getuid() != 0) {
         fprintf(stderr, "This test must be run with uid=0 (root)\n");
         return 1;
     }
-    
     sem = mmap(NULL, sizeof(sem_t)*2, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     sem_init(&sem[0], 1, 0);
     sem_init(&sem[1], 1, 0);
     setrlimit(RLIMIT_NPROC, &nproc);
-    
     for (i=0; i < nproc.rlim_cur-1; ++i) {
         if (!fork()) {
             setuid(uid);
@@ -60,72 +60,95 @@ int main()
             return 0;
         }
     }
-    failed = 0;
-    ret[1] = ret[0] = NULL;
-    for (j=0; j<max_tries && !failed; ++j) {
+    
+    ret = 0;
+    for (j=0; j<max_tries && ret<=0; ++j) {
         pipe(pfd);
         close(pfd[1]);
         if (!fork()) {
-            setuid(uid);
             sem_post(&sem[1]);    //ready
             read(pfd[0], NULL, 1);//wait
             if (j%2 == 0)
                 sched_yield();
+            setuid(uid);
+            
             return 0;
         }
         if (!(pid = fork())) {
+            mismatch = ret = 0; //for this process, that is
             for (i=0; i<nproc.rlim_cur; ++i)
-                pthread_create(&tid[i], NULL, gotuid, "");
+                pthread_create(&tid[i], NULL, gotuid, &uids[i]);
+            
             sem_post(&sem[1]);    //ready
             read(pfd[0], NULL, 1);//wait
             if (j%2 != 0)
                 sched_yield();
-            setuid(uid);
+            uidset = setuid(uid);
             
-            for (i=1; i<nproc.rlim_cur-1; ++i)
-                    pthread_join(tid[i], NULL);
-            pthread_join(tid[0], (void **)&ret[0]);
-            pthread_join(tid[i], (void **)&ret[1]);
-            return ret[1] != ret[0];
+            for (i=0; i<nproc.rlim_cur; ++i) {
+                pthread_join(tid[i], NULL);
+                if (uids[0] != uids[i])
+                    mismatch = 1;
+            }
+            if (mismatch) {
+                ret = -1;
+                if (!uidset) {
+                    fprintf(stderr, "thread mask: [");
+                    for (i=0; i<nproc.rlim_cur; ++i)
+                        fprintf (stderr, "%c", *(".0"+(i==0))); //lul
+                    fprintf(stderr, "] root='0', non-root='.'\n");
+                    if (uids[i] == 0)
+                        ret = 1;
+                }
+            }
+            else
+                ret = 0;
+            return ret;
         }
         //wait for both proceses to become ready:
         sem_wait(&sem[1]);
         sem_wait(&sem[1]);
         //allow them to continue:
         close(pfd[0]);
-        printf("Try %i/%i\n", j, max_tries); fflush(stdout); //---
         
         waitpid(pid, &stat, 0);
-        if(WIFEXITED(stat))
-            failed |= WEXITSTATUS(stat);
-        else
-            failed = 2;
+        if(WIFEXITED(stat)) {
+            if (WEXITSTATUS(stat)) //if the return value is 0, don't set ret
+                ret = WEXITSTATUS(stat);
+        }
+        else if (ret == 0)
+            ret = -2;
         wait(NULL);
     }
-    
-    if (failed == 1)
-        fprintf(
-            stderr,
-            "setuid()/getuid() failed in a threaded environment (try #%i):"
-            " NPROC limit was reached, then setuid called in the same time"
-            " as one of the slot-holding processes exited. Threads in the"
-            " setuid-calling program got contradictory getuid() results.",
-            j
-        );
-    else if (failed == 2)
-        fprintf(stderr, "A child process that spawned threads crashed!\n");
+    if (ret) {
+        if (ret == -1)
+            fprintf(
+                stderr,
+                "getuid returned differing values in threads"
+                " created by a setuid-calling process\n"
+            );
+        else if (ret == -2)
+            fprintf(stderr, "A child process that spawned threads crashed!\n");
+        else
+            fprintf(
+                stderr,
+                "[Iteration %i] Process' call to setuid() succeeded, but %i of"
+                " its threads still\nreported getuid() == 0(root)!\n",
+                ret, j+1
+            );
+    }
     
     sem_post(&sem[0]);
     for (i=0; i < nproc.rlim_cur-1; ++i)
         wait(NULL);
-    return failed;
+    return (ret == 0);
 }
 /** waits for pdf[0] file descriptor to close,
- ** \returns non-NULL if getuid doesn't return 0(root)
- ** \param foo must be non-NULL (!)
+ ** \returns a getuid value cast to void*
  **/
-static void* gotuid(void *foo)
+static void* gotuid(void *uid)
 {
-    read(pfd[0], foo, 1);//wait
-    return (void *)(getuid()==0 ? foo : NULL);
+    read(pfd[0], uid, 1);//wait
+    *(uid_t*)uid = getuid();
+    return NULL;
 }
