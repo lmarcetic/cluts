@@ -38,7 +38,7 @@ int main()
     const struct rlimit   nproc     = {10, 10};
     const uid_t           uid       = MAXUID-4;
     unsigned int    i, j, mismatch;
-    int             stat, uid_set, fd = open("/dev/zero", O_RDWR);
+    int             stat, failed_setuid, fd = open("/dev/zero", O_RDWR);
     pid_t           pid;
     pthread_t       tid[nproc.rlim_cur];
     uid_t           uids[nproc.rlim_cur];
@@ -83,7 +83,7 @@ int main()
             read(pfd[0], NULL, 1);//wait
             if (j%2 != 0)
                 sched_yield();
-            uid_set = setuid(uid);
+            failed_setuid = setuid(uid);
             
             for (i=0; i<nproc.rlim_cur; ++i) {
                 pthread_join(tid[i], NULL);
@@ -92,7 +92,7 @@ int main()
             }
             if (mismatch) {
                 ret = -1;
-                if (uid_set) {
+                if (!failed_setuid) {
                     for (i=0; i<nproc.rlim_cur && uids[i]!=0; ++i);
                     if (i < nproc.rlim_cur) {
                         fprintf(stderr, "getuid() per threads(non-root='.', root='0'):\n[");
@@ -139,7 +139,7 @@ int main()
         else
             fprintf(
                 stderr,
-                "<Iteration %i> Process' call to setuid() succeeded, but %i/%i"
+                "<Iteration %u> Process' call to setuid() succeeded, but %i/%i"
                 " of its threads still reported getuid() == 0(root)!\n",
                 j, ret, nproc.rlim_cur
             );
