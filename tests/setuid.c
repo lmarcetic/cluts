@@ -39,7 +39,7 @@ int main()
     //tweaking done here:
     const uid_t           uid        = MAXUID-4;
     const struct rlimit   nproc      = {78, 78};
-    const unsigned int    nr_threads = nproc.rlim_cur/2,
+    const unsigned int    nr_threads = nproc.rlim_cur,
                           nr_tries   = 1,
                           max_spins  = 1000;
     const int             fd         = open("/dev/zero", O_RDWR);
@@ -66,7 +66,7 @@ int main()
             pipe(pfd);
             //spawn slot squatting processes:
             for (i=0; i<nproc.rlim_cur && !fork(); ++i) {
-                close(pfd[0]);
+                close(pfd[1]);
                 setuid(uid);
                 sem_post(sem);         //ready
                 read(pfd[0], NULL, 1); //wait
@@ -77,7 +77,7 @@ int main()
             }
             //spawn the threaded process:
             if (!(pid = fork())) {
-                close(pfd[0]);
+                close(pfd[1]);
                 mismatch = ret = 0; //reuse
                 pthread_barrier_init(&barrier, NULL, nr_threads+1);
                 for (i=0; i<nr_threads; ++i)
@@ -121,6 +121,7 @@ int main()
             sem_wait(sem);
             sem_wait(sem);
             //allow them to continue:
+            close(pfd[0]);
             close(pfd[1]);
             
             //wait for them to finish, evaluate threaded process' return value:
@@ -135,24 +136,26 @@ int main()
                 wait(NULL);
         }
     }
+    fprintf(stdout,"%s",("\n\n"+(*foo%2)));//necessary for the cycle-wasting loop
     if (ret) {
         if (ret == -1)
             fprintf(
                 stderr,
                 "getuid returned differing values in threads"
                 " created by a setuid-calling process"
+                "\n"
             );
         else if (ret == -2)
-            fprintf(stderr, "A child process that spawned threads crashed!");
+            fprintf(stderr, "A child process that spawned threads crashed!\n");
         else
             fprintf(
                 stderr,
                 "<Try %u, iteration %u>Process' call to setuid() succeeded,\n"
-                "but %i/%i of its threads still reported getuid() == 0(root)!",
+                "but %i/%i of its threads still reported getuid() == 0(root)!"
+                "\n",
                 j, k, ret, (int)nproc.rlim_cur
             );
     }
-    fprintf(stdout,"%s",("\n\n"+(*foo%2)));//necessary for the cycle-wasting loop
     return (ret == 0);
 }
 //waits for pfd[0] to close, then sets a void* to the value of getuid
