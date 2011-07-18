@@ -32,7 +32,7 @@
 sem_t *sem; //will point to a shared semaphore
 int pfd[2]; //will hold file pointers for pipe-based process synchronization
 pthread_barrier_t barrier; //pointer to a barrier for the threads
-static void* set_uid(void *uid);
+static void* tell_uid(void *uid);
 
 int main()
 {
@@ -66,14 +66,16 @@ int main()
             pipe(pfd);
             //spawn slot squatting processes:
             for (i=0; i<nproc.rlim_cur && !fork(); ++i) {
-                close(pfd[1]);
-                setuid(uid);
-                sem_post(sem);         //ready
-                read(pfd[0], NULL, 1); //wait
-                if (j%2 == 0)
-                    sched_yield();
+                if (!fork()){
+                    close(pfd[1]);
+                    setuid(uid);
+                    sem_post(sem);         //ready
+                    read(pfd[0], NULL, 1); //wait
+                    if (i%2 == 0)
+                        sched_yield();
                 
-                return 0;
+                    return 0;
+                }
             }
             //spawn the threaded process:
             if (!(pid = fork())) {
@@ -81,15 +83,14 @@ int main()
                 mismatch = ret = 0; //reuse
                 pthread_barrier_init(&barrier, NULL, nr_threads+1);
                 for (i=0; i<nr_threads; ++i)
-                    pthread_create(&tid[i], NULL, set_uid, &uids[i]);
+                    pthread_create(&tid[i], NULL, tell_uid, &uids[i]);
                 
                 sem_post(sem);         //ready
                 read(pfd[0], NULL, 1); //wait
                 for(i=0; i<k; ++i)
                     *foo ^= i;                  //waste cycles
                 failed_setuid = setuid(uid);
-                pthread_barrier_wait(&barrier); //run threads
-                
+                pthread_barrier_wait(&barrier); //allow threads to continue                
                 for (i=0; i<nr_threads; ++i) {
                     pthread_join(tid[i], NULL);
                     if (uids[0] != uids[i])
@@ -118,8 +119,8 @@ int main()
                 return ret;
             }
             //wait for both proceses to become ready:
-            sem_wait(sem);
-            sem_wait(sem);
+            for(i=0; i<nproc.rlim_cur + 1; ++i)
+                sem_wait(sem);
             //allow them to continue:
             close(pfd[0]);
             close(pfd[1]);
@@ -159,7 +160,7 @@ int main()
     return (ret == 0);
 }
 //waits for pfd[0] to close, then sets a void* to the value of getuid
-static void* set_uid(void *uid)
+static void* tell_uid(void *uid)
 {
     pthread_barrier_wait(&barrier); //wait for setuid from the main thread
     *(uid_t*)uid = getuid();
