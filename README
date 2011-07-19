@@ -1,4 +1,5 @@
 C Library Unit Test Suite
+SUSv4 compliance tests for the standard C library
 
 Install:
 	make
