@@ -3,12 +3,11 @@
 #include <math.h>
 #include <setjmp.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <wait.h>
 #include <string.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <stdint.h>
+#include <stdint.h> //PTRDIFF_MAX, SIZE_MAX
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -37,16 +36,16 @@ struct block {
     size_t size;
 };
 
-static int posix_memalign_alignment(size_t);
-static void bridge_sig_jmp(int);
+static size_t posix_memalign_alignment(size_t);
 static size_t blocks_alloc(const void *, struct block *, size_t);
 static size_t blocks_overlapping(struct block *, size_t);
 static void blocks_sort(struct block *, size_t);
 static int blocks_sort_compar(const void *, const void *);
-static int block_missaligned(struct block, size_t);
-static int blocks_missaligned(struct block *, size_t);
+static int block_misaligned(struct block, size_t);
+static int blocks_misaligned(struct block *, size_t);
 static int blocks_notrw(struct block *, size_t);
-static int calloc_overflows(uintmax_t);
+static int calloc_overflows(long int);
+static void bridge_sig_jmp(int);
 
 int main()
 {
@@ -70,10 +69,10 @@ int main()
             notr:1,
             notw:1,
             notsame:1,
-            missaligned:1,
-            free:1,
+            misaligned:1,
             ov_size_t:1,
-            ov_ptrdiff_t:1;
+            ov_ptrdiff_t:1,
+            free:1;
     } *err; //a bitfield to indicate errors
     const size_t max_blocks  = mem->pages*1.6; //should alloc >= mem->free bytes
     struct block *b          = malloc(max_blocks * sizeof(struct block));
@@ -82,25 +81,32 @@ int main()
     const int    fd          = open("/dev/zero", O_RDWR);
     size_t       nr_blocks;
     int          ret, stat;
+    unsigned int i, j;
     err = mmap(NULL,sizeof(struct s_err),PROT_READ|PROT_WRITE, MAP_SHARED,fd,0);
     
     ret = 0;
-    for (unsigned int i=0; i<sizeof(fun)/sizeof(*fun); ++i) {
+    for (i=0; i<sizeof(fun)/sizeof(*fun); ++i) {
         memset(err, 0, sizeof(*err)); //all zeros = no errors
-        if (!fork()){
-            nr_blocks = blocks_alloc(fun[i], b, max_blocks);
+        //if (!fork()){
+            if (fun[i]==calloc) {
+                if(calloc_overflows(SIZE_MAX))
+                    err->ov_size_t = 1;
+                if(calloc_overflows(PTRDIFF_MAX))
+                    err->ov_ptrdiff_t = 1;
+            }
+            
+            if (fun[i] == realloc)
+                nr_blocks = blocks_alloc(malloc,  b, max_blocks);
+            else
+                nr_blocks = max_blocks;
+            nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
             printf("(%u)", nr_blocks); //---
+            
             if (nr_blocks < mem->pages*0.9) //at least
                 err->alloc = 1;
             else {
-                if (fun[i]==calloc) {
-                    if(calloc_overflows(SIZE_MAX))
-                        err->ov_size_t = 1;
-                    if(calloc_overflows(PTRDIFF_MAX))
-                        err->ov_ptrdiff_t = 1;
-                }
-                if (fun[i]==posix_memalign && blocks_missaligned(b, nr_blocks))
-                    err->missaligned = 1;
+                if (fun[i]==posix_memalign && blocks_misaligned(b, nr_blocks))
+                    err->misaligned = 1;
                 //universal:
                 if (blocks_overlapping(b, nr_blocks))
                     err->overlapping = 1;
@@ -110,12 +116,12 @@ int main()
                     case 3: err->notsame = 1; break;
                 } 
                 err->free = 1;
-                for(i=0; i<nr_blocks; ++i)
-                    free(b[i].ptr);
+                for(j=0; j<nr_blocks; ++j)
+                    free(b[j].ptr);
                 err->free = 0;
             }
             return 0;
-        }
+        /*}*/fork();//---
         
         wait(&stat);
         if (!WIFEXITED(stat) && !err->free) {
@@ -123,7 +129,7 @@ int main()
             fprintf(stderr, "%s test quit unexpectedly (status code: %i)!\n",
                             fun_name[i], WEXITSTATUS(stat));
         }else {
-            ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) == 0);
+            ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) != 0);
             if (err->alloc)
                 fprintf(
                     stderr,
@@ -143,9 +149,9 @@ int main()
                         " match the one previously writen there\n",
                         fun_name[i]
                 );
-            if (err->missaligned)
+            if (err->misaligned)
                 fprintf(
-                    stderr, "%s allocated at least one missaligned block\n",
+                    stderr, "%s allocated at least one misaligned block\n",
                     fun_name[i]
                 );
             if (err->free)
@@ -177,8 +183,8 @@ int main()
 
 /**
  ** (re)Allocates a number of blocks of random sizes, saves info about them
- ** \param fun a pointer to the function to be called to (re)allocate the blocks
- ** \param b a pointer to a struct block array to be filled with block info
+ ** \param fun a pointer to the function to call to (re)allocate the blocks
+ ** \param b a pointer to a struct block array to be filled with blocks info
  ** \param n a maximum number of blocks<=max.nr. of elements the array can store
  ** \returns the number of blocks successfully allocated
  **/
@@ -189,8 +195,8 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
     
     srand((unsigned int)b[0].ptr);
     nr_bytes = nr_blocks = 0;
-    ptr = NULL;
     for (i=0; i<n && nr_bytes < mem->free; ++i) {
+        ptr = NULL;
         size = rand() % mem->page*2;
         if (fun == malloc)
             ptr = malloc(size);
@@ -199,23 +205,24 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
         else if (fun == posix_memalign)
             posix_memalign((void **)&ptr, posix_memalign_alignment(i),size);
         else if (fun == realloc)
-            ptr = realloc(b[i].ptr, size);
+            ptr = realloc(b[nr_blocks].ptr, size);
+        else
+            return 0;
         if (ptr != NULL) {
-            b[i].ptr  = ptr;
-            b[i].size = size;
+            b[nr_blocks].ptr  = ptr;
+            b[nr_blocks].size = size;
             ++nr_blocks;
             nr_bytes += size;
         }
     }
-    //printf("i<n:%i, nr_bytes<mem->free: %i\n", i<n, nr_bytes<mem->free);
     return nr_blocks;
 }
 /**
- ** Generates a value to be used as a 2nd argument(alingment) to posix_memalign
- ** \param seed required for the calculation (index of the block element)
- ** \returns a power of two value that is the multiple of sizeof(void *)
+ ** Generates a value to be used as a 2nd argument(alignment) to posix_memalign
+ ** \param seed - required for the calculation (index of the block element)
+ ** \returns a power of two value that is a multiple of sizeof(void *)
  **/
-static int posix_memalign_alignment(size_t seed)
+static size_t posix_memalign_alignment(size_t seed)
 {
     while( seed % sizeof(void *) != 0
            || sqrtl(seed) != (long double)((long int)sqrtl(seed))
@@ -226,29 +233,29 @@ static int posix_memalign_alignment(size_t seed)
 
 /**
  ** Searches for overlapping blocks
- ** \param b a pointer to a SORTED(ascending by ptr) array of type struct block
- ** \param n a number of elements in the array to search through
- ** \returns an index of a block from b whose .ptr points to an address in the
+ ** \param b a pointer to an array of type struct block
+ ** \param n number of elements in the array to search through (will be sorted!)
+ ** \returns an index to b of an element whose .ptr points to an address in the
  **          preceeding block's space[ptr, ptr+size], or 0 if none such is found
  **/
 static size_t blocks_overlapping(struct block *b, size_t n)
 {
     blocks_sort(b, n);
-    for (size_t i=1; i<n; --n)
+    for (size_t i=1; i<n; ++i)
         if(b[i].ptr < b[i-1].ptr+b[i-1].size)
             return i;
     return 0;
 }
 /**
  ** Sorts the array of type struct block
- ** \parm b pointer to the array
- ** \param n number of elements in the array
+ ** \parm b a pointer to the array
+ ** \param n the number of array elements to sort
  **/
 static void blocks_sort(struct block *b, size_t n)
 {
     qsort(b, n, sizeof(b[0]), blocks_sort_compar);
 }
-//A function for qsort() which is used in blocks_sort()
+//A comparison function used by qsort() in blocks_sort()
 static int blocks_sort_compar(const void *v1, const void *v2)
 {
     struct block b1 = *(struct block *)v1,
@@ -259,9 +266,9 @@ static int blocks_sort_compar(const void *v1, const void *v2)
 }
 
 /**
- ** Check blocks for read/write-ability
+ ** Check blocks for read/write-ability (+consistence)
  ** \param b a pointer to an array of type struct block
- ** \param n a number of elements in the array to check
+ ** \param n the number of array elements to check
  ** \returns
  **         0 - if all blocks are readable and writable
  **         1 - if one of the blocks isn't writable
@@ -271,14 +278,14 @@ static int blocks_sort_compar(const void *v1, const void *v2)
 static int blocks_notrw(struct block *b, size_t n)
 {
     size_t i, j;
-    int ret = 0;
     struct sigaction oldact, act;
+    int ret = 0;
     
     act.sa_handler = bridge_sig_jmp;
     act.sa_flags   = SA_NODEFER;
     sigaction(SIGSEGV, &act, &oldact);
-    for (i=0; i<n; ++i) {
-        for (j=0; j<=3; ++j) {
+    for (i=0; i<n && !ret; ++i) {
+        for (j=0; j<=3 && !ret; ++j) {
             if(!setjmp(env)) {
                 b[i].ptr[j*b[i].size] = '\r';
                 if(!setjmp(env)) {
@@ -296,46 +303,47 @@ static int blocks_notrw(struct block *b, size_t n)
 
 
 /**
- ** Check that a block (allocated by posix_memalign) is correctly alligned
+ ** Check that a block (allocated by posix_memalign) is correctly aligned
  ** \param b1 a block to check (type struct block)
  ** \param alignment value of the 2nd argument that was passed to posix_memalign
- ** \returns 1 if the block is incorrectly alligned, otherwise 0
+ ** \returns 1 if the block is incorrectly aligned, otherwise 0
  **/
-static int block_missaligned(struct block b1, size_t alignment)
+static int block_misaligned(struct block b1, size_t alignment)
 {
     return ((size_t)b1.ptr % alignment != 0);
 }
-/** Does for an array what block_missaligned does for (assuming alignment was
- ** accquired via a posix_memalign_alignment(), seeded with an index of each
- ** element, assuming b[0] is really the first element of the array(!).
- ** \param b a pointer to a first(!) element of an array of type struct block
- ** \param n a number of elements in the array to check
- ** \returns 1 if any of the calls to block_missaligned() returns 1, otherwise 0
+/** Does for an array what block_misaligned does for a single block
+ ** \note the function assumes that posix_memalign_alignment() generated  the 
+ ** alignment value, seeded with an index of each element. Likewise, it assumes
+ ** that assuming b[0] is truly the first element of the array
+ ** \param b a pointer to the first(!) element of an array of type struct block
+ ** \param n the number of elements in the array to check
+ ** \returns 1 if any of the calls to block_misaligned() returns 1, otherwise 0
  **/
-static int blocks_missaligned(struct block *b, size_t n)
+static int blocks_misaligned(struct block *b, size_t n)
 {
     for(size_t i=0; i<n; ++i)
-        if (block_missaligned(b[i], posix_memalign_alignment(i)))
+        if (block_misaligned(b[i], posix_memalign_alignment(i)))
             return 1;
     return 0;
 }
 
 /**
- ** Calls calloc with args whose product is greater than limit, to see if it
- ** it returns non-NULL
+ ** Calls calloc with arguments whose product is greater than limit, to see if
+ ** it returns a non-NULL pointer(ie allocates space, in which case it is freed)
  ** \param limit when incremented by 1, a value for which allocation should fail
  ** \returns 1 if calloc returns a non-NULL (incorrect behavior), otherwise 0
  **/
-static int calloc_overflows(uintmax_t limit)
+static int calloc_overflows(long int limit)//long>size_t for this/sqrtl to work!
 {
-    size_t d;
+    long int d;
     void *vp;
-    for (d=sqrtl(limit);  limit%d != 0;  --d);
+    for (d = sqrtl(limit);  limit%d != 0;  --d);
     if (d < 2) {
         d = 2;
-        limit += 3;
+        ++limit;
     }
-    if ((vp = calloc(d, limit/d)) != NULL) {
+    if ((vp = calloc(d+1 , limit/d)) != NULL) {
         free(vp);
         return 1;
     }else
