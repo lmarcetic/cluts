@@ -1,14 +1,14 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <errno.h>
-#include <setjmp.h>
-#include <signal.h>
 #include <unistd.h>
-#include <stdint.h>
 #include <math.h>
-#include <semaphore.h>
+#include <setjmp.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <wait.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <stdint.h>
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -20,345 +20,331 @@
  */
 
 /**
- ** \file depends: fprintf, malloc, setjmp, longjmp, sigaction!, sqrt, sprintf, sem_init, sem_wait, sem_post, strncmp, strncpy
- ** \author Luka Marčetić, 2011
- ** functions tested: malloc, calloc, posix_memalign, realloc
+ ** \file
+ ** tests: malloc, realloc, calloc, posix_memalign
+ ** depends: sysconf, sqrtl, free, fork,wait, srand,rand, setjmp,longjmp, qsort,
+ **          fprintf, memcmp,memset, open,mmap
  **/
 
-#define M (long long)500*1024*1024  ///<allocation goal in bytes
-#define NR_THREADS 10               ///<number of threads to spawn
-#define N (long long)30             ///<M(/NR_THREADS)/N is maxum block size
-
-jmp_buf env[2]; ///< will store the stack context/environment
+#define MB_RAM 16
+jmp_buf env;
+struct s_mem {
+    const size_t page, pages;
+    const unsigned long long free;
+} *mem;
 struct block {
-        char *ptr;
-        size_t size;
-        struct block *next;
-} *ring;   ///< ring-queue keeps track of blocks, shared between threads
+    char *ptr;
+    size_t size;
+};
 
-void bridge_sig_jmp(int sig);
-int safe_free(void *vp, char *err_msg);
-void* test_malloc(void *ptr);
-int overlapping(struct block *a, struct block *b);
-size_t min(size_t a, size_t b);
-
+static int posix_memalign_alignment(size_t);
+static void bridge_sig_jmp(int);
+static size_t blocks_alloc(const void *, struct block *, size_t);
+static size_t blocks_overlapping(struct block *, size_t);
+static void blocks_sort(struct block *, size_t);
+static int blocks_sort_compar(const void *, const void *);
+static int block_missaligned(struct block, size_t);
+static int blocks_missaligned(struct block *, size_t);
+static int blocks_notrw(struct block *, size_t);
+static int calloc_overflows(uintmax_t);
 
 int main()
 {
-    int i, j, blocks[1], failed=0;
-    pthread_t *pt;
-    char *s, *tmps;
-    void *vp;
-    size_t st;
-    unsigned rnd;
-    const size_t pg_size = sysconf(_SC_PAGESIZE);
-    struct block *bp;
-    struct sigaction oldact[2], act;
-    sem_t sem; ///< semaphore is used for thread mutex
+    //encapsulate some memory info in a struct:
+    mem = &(struct s_mem){
+        //size of one page in bytes:
+        .page = sysconf(_SC_PAGE_SIZE),
+        //number of available pages, free memory in bytes:
+        #ifdef _SC_AVPHYS_PAGES
+            .pages = sysconf(_SC_AVPHYS_PAGES),
+            .free  = sysconf(_SC_PAGE_SIZE) * sysconf(_SC_AVPHYS_PAGES),
+        #else
+            .pages = (MB_RAM*1024*1024/mem->page), ///<ehm
+            .free  = sysconf(_SC_PAGE_SIZE) * (MB_RAM*1024*1024/mem->page),
+        #endif
+    };
+    struct s_err {
+        unsigned int
+            alloc:1,
+            overlapping:1,
+            notr:1,
+            notw:1,
+            notsame:1,
+            missaligned:1,
+            free:1,
+            ov_size_t:1,
+            ov_ptrdiff_t:1;
+    } *err; //a bitfield to indicate errors
+    const size_t max_blocks  = mem->pages*1.6; //should alloc >= mem->free bytes
+    struct block *b          = malloc(max_blocks * sizeof(struct block));
+    const void   *fun[]      = { malloc,  realloc,  calloc,  posix_memalign };
+    const char   *fun_name[] = {"malloc","realloc","calloc","posix_memalign"};
+    const int    fd          = open("/dev/zero", O_RDWR);
+    size_t       nr_blocks;
+    int          ret, stat;
+    err = mmap(NULL,sizeof(struct s_err),PROT_READ|PROT_WRITE, MAP_SHARED,fd,0);
+    
+    ret = 0;
+    for (unsigned int i=0; i<sizeof(fun)/sizeof(*fun); ++i) {
+        memset(err, 0, sizeof(*err)); //all zeros = no errors
+        if (!fork()){
+            nr_blocks = blocks_alloc(fun[i], b, max_blocks);
+            printf("(%u)", nr_blocks); //---
+            if (nr_blocks < mem->pages*0.9) //at least
+                err->alloc = 1;
+            else {
+                if (fun[i]==calloc) {
+                    if(calloc_overflows(SIZE_MAX))
+                        err->ov_size_t = 1;
+                    if(calloc_overflows(PTRDIFF_MAX))
+                        err->ov_ptrdiff_t = 1;
+                }
+                if (fun[i]==posix_memalign && blocks_missaligned(b, nr_blocks))
+                    err->missaligned = 1;
+                //universal:
+                if (blocks_overlapping(b, nr_blocks))
+                    err->overlapping = 1;
+                switch (blocks_notrw(b, nr_blocks)) {
+                    case 1: err->notw    = 1; break;
+                    case 2: err->notr    = 1; break;
+                    case 3: err->notsame = 1; break;
+                } 
+                err->free = 1;
+                for(i=0; i<nr_blocks; ++i)
+                    free(b[i].ptr);
+                err->free = 0;
+            }
+            return 0;
+        }
+        
+        wait(&stat);
+        if (!WIFEXITED(stat) && !err->free) {
+            ++ret;
+            fprintf(stderr, "%s test quit unexpectedly (status code: %i)!\n",
+                            fun_name[i], WEXITSTATUS(stat));
+        }else {
+            ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) == 0);
+            if (err->alloc)
+                fprintf(
+                    stderr,
+                    "%s failed to allocate sufficient amount of"
+                    " memory to run the test\n",
+                    fun_name[i]
+                );
+            if (err->overlapping)
+               fprintf(stderr,"%s allocated blocks that overlap\n",fun_name[i]);
+            if (err->notr)
+                fprintf(stderr,"%s 'allocated' unreadable memory\n",fun_name[i]);
+            if (err->notw)
+                fprintf(stderr,"%s 'allocated' unwritable memory\n",fun_name[i]);
+            if (err->notsame)
+                fprintf(stderr,
+                        "a byte read from %s-allocated memory does not"
+                        " match the one previously writen there\n",
+                        fun_name[i]
+                );
+            if (err->missaligned)
+                fprintf(
+                    stderr, "%s allocated at least one missaligned block\n",
+                    fun_name[i]
+                );
+            if (err->free)
+                fprintf(
+                    stderr, "free() failed to free memory allocated by %s\n",
+                    fun_name[i]
+                );
+            if (err->ov_size_t)
+                fprintf(
+                    stderr,
+                    "%s tried to allocate more than SIZE_MAX bytes, which"
+                    " means the block's size would no be representable"
+                    " by a size_t type\n",
+                    fun_name[i]
+                );
+            if (err->ov_ptrdiff_t)
+                fprintf(
+                    stderr,
+                    "%s tried to allocate more than PTRDIFF_MAX bytes, which"
+                    " would cause an overflow of ptrdiff_t when subtracting"
+                    " two pointers from the opposite ends of the block\n",
+                    fun_name[i]
+                );
+        }
+    }
+    
+    return ret;
+}
 
+/**
+ ** (re)Allocates a number of blocks of random sizes, saves info about them
+ ** \param fun a pointer to the function to be called to (re)allocate the blocks
+ ** \param b a pointer to a struct block array to be filled with block info
+ ** \param n a maximum number of blocks<=max.nr. of elements the array can store
+ ** \returns the number of blocks successfully allocated
+ **/
+static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
+{
+    size_t  i, size, nr_bytes, nr_blocks;
+    char    *ptr;
+    
+    srand((unsigned int)b[0].ptr);
+    nr_bytes = nr_blocks = 0;
+    ptr = NULL;
+    for (i=0; i<n && nr_bytes < mem->free; ++i) {
+        size = rand() % mem->page*2;
+        if (fun == malloc)
+            ptr = malloc(size);
+        else if (fun == calloc)
+            ptr = calloc(1, size);
+        else if (fun == posix_memalign)
+            posix_memalign((void **)&ptr, posix_memalign_alignment(i),size);
+        else if (fun == realloc)
+            ptr = realloc(b[i].ptr, size);
+        if (ptr != NULL) {
+            b[i].ptr  = ptr;
+            b[i].size = size;
+            ++nr_blocks;
+            nr_bytes += size;
+        }
+    }
+    //printf("i<n:%i, nr_bytes<mem->free: %i\n", i<n, nr_bytes<mem->free);
+    return nr_blocks;
+}
+/**
+ ** Generates a value to be used as a 2nd argument(alingment) to posix_memalign
+ ** \param seed required for the calculation (index of the block element)
+ ** \returns a power of two value that is the multiple of sizeof(void *)
+ **/
+static int posix_memalign_alignment(size_t seed)
+{
+    while( seed % sizeof(void *) != 0
+           || sqrtl(seed) != (long double)((long int)sqrtl(seed))
+    )
+        ++seed;
+    return seed;
+}
+
+/**
+ ** Searches for overlapping blocks
+ ** \param b a pointer to a SORTED(ascending by ptr) array of type struct block
+ ** \param n a number of elements in the array to search through
+ ** \returns an index of a block from b whose .ptr points to an address in the
+ **          preceeding block's space[ptr, ptr+size], or 0 if none such is found
+ **/
+static size_t blocks_overlapping(struct block *b, size_t n)
+{
+    blocks_sort(b, n);
+    for (size_t i=1; i<n; --n)
+        if(b[i].ptr < b[i-1].ptr+b[i-1].size)
+            return i;
+    return 0;
+}
+/**
+ ** Sorts the array of type struct block
+ ** \parm b pointer to the array
+ ** \param n number of elements in the array
+ **/
+static void blocks_sort(struct block *b, size_t n)
+{
+    qsort(b, n, sizeof(b[0]), blocks_sort_compar);
+}
+//A function for qsort() which is used in blocks_sort()
+static int blocks_sort_compar(const void *v1, const void *v2)
+{
+    struct block b1 = *(struct block *)v1,
+                 b2 = *(struct block *)v2;
+    if (b1.ptr < b2.ptr)
+        return -1;
+    return (b1.ptr > b2.ptr);
+}
+
+/**
+ ** Check blocks for read/write-ability
+ ** \param b a pointer to an array of type struct block
+ ** \param n a number of elements in the array to check
+ ** \returns
+ **         0 - if all blocks are readable and writable
+ **         1 - if one of the blocks isn't writable
+ **         2 - if one of the blocks isn't readable
+ **         3 - if a byte that was read didn't match a byte that was written
+ **/
+static int blocks_notrw(struct block *b, size_t n)
+{
+    size_t i, j;
+    int ret = 0;
+    struct sigaction oldact, act;
+    
     act.sa_handler = bridge_sig_jmp;
     act.sa_flags   = SA_NODEFER;
-    sigaction(SIGSEGV, &act, &oldact[0]);
-    
-    //make a head element for the ring-queue which will hold info about blocks:
-    ring = malloc(sizeof(struct block));
-    if (!setjmp(env[0]) && ring!=NULL) {
-        ring->ptr  = NULL;
-        ring->size = 0;
-        ring->next = ring;
-    }else
-        errno = -fprintf(stderr, "malloc failed to allocate the initial %zu B\n", sizeof(struct block));
-    
-    if (!errno)
-        tmps = malloc(M/N);
-    
-    /* -- malloc: -- */
-    errno=0;
-    if (!errno){
-        *blocks = *((int*)test_malloc(NULL));
-        //free all:
-        for (i=0; !errno && i<=*blocks; ++i) {
-            if (!setjmp(env[0])) {
-                if (ring->next->ptr != NULL) {
-                    safe_free(ring->next->ptr, "free caused a SIGABRT (pointer provided by malloc)\n");
-                    bp = ring->next->next;
-                    safe_free(ring->next, "free caused a SIGABRT (pointer provided by malloc)\n");
-                    ring->next = bp;
+    sigaction(SIGSEGV, &act, &oldact);
+    for (i=0; i<n; ++i) {
+        for (j=0; j<=3; ++j) {
+            if(!setjmp(env)) {
+                b[i].ptr[j*b[i].size] = '\r';
+                if(!setjmp(env)) {
+                    if(b[i].ptr[j*b[i].size] != '\r')
+                        ret = 3;
                 }else
-                    ring = ring->next;
-            }else{
-                fprintf(stdout, "W:free caused a SIGSEGV\n");
-                break;
-            }
-        }
-        //printf ("sleeping.\n"); sleep(7); //----------------
-        fprintf(stdout, "<multithreaded>\n"); //--------------
-        pt = malloc(sizeof(pthread_t)*NR_THREADS);
-        sem_init(&sem, 0, 1);
-        for (i=0; i<NR_THREADS; ++i)
-            pthread_create(&pt[i], NULL, test_malloc, (void*)&sem);
-        for (i=0; i<NR_THREADS; ++i)
-            pthread_join(pt[i], NULL);
-        fprintf(stdout, "</multithreaded>\n");//--------------
-    }
-    if (errno)
-        ++failed;
-    
-    /* -- calloc (size_t overflow only): -- */
-    errno = 0;
-    vp = (void *)1;
-    if ((vp=calloc(SIZE_MAX/2, 3)) != NULL) {
-        fprintf(stdout, "W:calloc returned non-NULL when asked for more than SIZE_MAX bytes\n");
-        if (errno == ENOMEM)
-            fprintf(stderr, " errno=ENOMEM, implying calloc tried to allocate SIZE_MAX+ B\n");
-        else {
-            if (!setjmp(env[0])) {
-                s = (char *)vp + SIZE_MAX;
-                ++s[1];
-            }
-            else
-                fprintf(stderr, " (SIZE_MAX+1)th byte is inaccessible implying calloc underallocated\n");
-                
-            sprintf(tmps, "free following a calloc(%llu, %zu) caused a SIGABRT\n", (long long)SIZE_MAX/2, (size_t)3);
-            errno = safe_free(vp, tmps);
+                    ret = 2;
+            }else
+                ret = 1;
         }
     }
-    if (errno)
-        ++failed;
-    
-    /* -- posix_memalign: -- */
-    errno = 0;
-    vp = (void *)1;
-    for (st=1; st<pg_size+1 && !errno; ++st) {
-        for (i=1; (size_t)i<pg_size+1 && !errno; ++i) {
-            errno = posix_memalign((void **)&vp, st, i);
-            s = (char*)vp;
-            if (s != NULL && errno == EINVAL) {
-                if (st%sizeof(void *)!=0 || sqrt(st)!=(int)st) {
-                    if(errno!=EINVAL)
-                        errno = -fprintf(stderr, "posix_memalign failed to return EINVAL when given alignment=%zu\n", st);
-                }
-                else if ((size_t)s%st != 0)
-                    errno = -fprintf(stderr, "posix_memalign gave a pointer that is not a multiple of %zu\n", st);
-                else {
-                    for (j=0; j<i && !errno; ++j) {
-                        if (!setjmp(env[0])) {
-                            if (s[j] != 0)
-                                errno = -fprintf(stderr, "posix_memalign failed to initialize memory to 0\n");
-                            if (!setjmp(env[0]))
-                                ++s[j];
-                            else
-                                errno = -fprintf(stderr, "posix_memalign 'allocated' unwritable memory\n");
-                        }
-                        else
-                            errno = -fprintf(stderr, "posix_memalign 'allocated' unreadable memory\n");
-                    }
-                }
-                
-                sprintf(tmps, "free following a posix_memalign(%zu, %zu, %d) caused a SIGABRT\n", (size_t)s, st, i);
-                errno = safe_free(vp, tmps);
-            }
-            else if (!errno)
-                errno = -fprintf(stderr, "posix_memalign NULL :-/\n");
-            
-        }
-    }
-    if (errno)
-        ++failed;
-    
-    /* -- realloc: -- */
-    errno = 0;
-    for (i=0; !errno && i<=(*blocks)*2; ++i) {
-        rnd = rand_r(&rnd);
-        strncpy(tmps, ring->ptr, ring->size);
-        vp = realloc(ring->ptr, rnd%M/N +1);
-        if (vp != NULL) {
-            ring->ptr = vp;
-            if (!setjmp(env[0]))
-            {
-                if (strncmp(tmps, ring->ptr, min(ring->size, rnd%M/N +1)))
-                    errno = -fprintf(stderr, "realloc-given new memory segment's content differs from that of the old one\n");
-                ring->size = rnd%M/N +1;
-                if (!setjmp(env[0]))
-                {
-                    for (s=(char*)ring->ptr; s<(char*)ring->ptr+ring->size; ++s)
-                        *s = 1;
-                }
-                else
-                    errno =-fprintf(stderr, "realloc 'allocated' unwritable memory\n");
-            }
-            else
-                errno = -fprintf(stderr, "realloc 'allocated' unreadable memory\n");
-        }
-        else if (errno != ENOMEM)
-            errno = -fprintf(stderr, "realloc returned a NULL without setting errno to ENOMEM\n");
-
-        bp = ring->next->next;
-        for (j=0; !errno && j<*blocks; ++j) {
-            if (ring->next != NULL && ring->next != bp && overlapping(ring->next, bp))
-                errno = -fprintf(stderr, "malloc incorrectly allocated memory: segments overlapping\n");
-            bp = bp->next;
-        }
-        
-        ring = ring->next;
-    }
-    if (errno)
-        ++failed;
-    
-    sigaction(SIGSEGV, &oldact[0], NULL);
-    return failed;
+    sigaction(SIGSEGV, &oldact, NULL);
+    return ret;
 }
 
-/**
- ** A bridge function to be passed to signal(), to call siglongjmp().
- **/
-void bridge_sig_jmp(int sig)
-{
-    if (sig == SIGSEGV)
-        longjmp(env[0], 1);
-    else
-        longjmp(env[1], 1);
-    return;
-}
 
 /**
- ** \param vp a void pointer to memory to free
- ** \param err_msg an error message to be printed to stderr on failure(SIGABRT)
- ** \returns errno (set to <0 on failure)
+ ** Check that a block (allocated by posix_memalign) is correctly alligned
+ ** \param b1 a block to check (type struct block)
+ ** \param alignment value of the 2nd argument that was passed to posix_memalign
+ ** \returns 1 if the block is incorrectly alligned, otherwise 0
  **/
-int safe_free(void *vp, char *err_msg)
+static int block_missaligned(struct block b1, size_t alignment)
 {
-        struct sigaction oldact, act;
-        act.sa_handler = bridge_sig_jmp;
-        act.sa_flags   = 0;
-        
-        sigaction(SIGABRT, &act, &oldact);
-        if (!setjmp(env[1]))
-            free(vp);
-        else
-            errno = -fprintf(stderr, err_msg);
-        sigaction(SIGABRT, &oldact, NULL);
-        
-        return errno;
+    return ((size_t)b1.ptr % alignment != 0);
 }
-
-/**
- ** Tests memory blocks for overlapping
- ** \returns 1 if blocks are overlapping, otherwise 0
+/** Does for an array what block_missaligned does for (assuming alignment was
+ ** accquired via a posix_memalign_alignment(), seeded with an index of each
+ ** element, assuming b[0] is really the first element of the array(!).
+ ** \param b a pointer to a first(!) element of an array of type struct block
+ ** \param n a number of elements in the array to check
+ ** \returns 1 if any of the calls to block_missaligned() returns 1, otherwise 0
  **/
-int overlapping(struct block *a, struct block *b)
+static int blocks_missaligned(struct block *b, size_t n)
 {
-    if (
-           (b->ptr <= a->ptr          &&  a->ptr         <  b->ptr+b->size)
-        || (b->ptr <  a->ptr+a->size  &&  a->ptr+a->size <= b->ptr+b->size)
-        || (a->ptr <= b->ptr          &&  b->ptr         <  a->ptr+a->size)
-        || (a->ptr <  b->ptr+b->size  &&  b->ptr+b->size <= a->ptr+a->size)
-    )
-        return 1;    
+    for(size_t i=0; i<n; ++i)
+        if (block_missaligned(b[i], posix_memalign_alignment(i)))
+            return 1;
     return 0;
 }
 
 /**
- ** \returns smaller of the two parameters passed
- ** \param a first value for the comparison
- ** \param b second value for the comparison
+ ** Calls calloc with args whose product is greater than limit, to see if it
+ ** it returns non-NULL
+ ** \param limit when incremented by 1, a value for which allocation should fail
+ ** \returns 1 if calloc returns a non-NULL (incorrect behavior), otherwise 0
  **/
-size_t min(size_t a, size_t b)
+static int calloc_overflows(uintmax_t limit)
 {
-    if (a < b)
-        return a;
-    return b;
-}
-
-/**
- ** Tests the malloc function and fragmentates memory
- ** \param sem is a pointer to the semaphore for thread mutex
- ** \returns a void pointer to the number of blocks
- **/
-void* test_malloc(void *sem)
-{
-    int i, j, *blocks = malloc(sizeof(int));
-    struct block *bp;
-    long long bytes, max;
-    char *s;
+    size_t d;
     void *vp;
-    unsigned rnd;
-    
-    if(sem == NULL)
-        max = M;
-    else
-        max = M/NR_THREADS;
-
-    //allocate blocks and fill the ring-queue with their info:
-    errno = rnd = bytes = *blocks = 0;
-    while(!errno && bytes<max) {
-        rnd = rand_r(&rnd);
-        vp = malloc(rnd%max/N +1);
-        if (sem != NULL)
-            sem_wait(sem);
-        bp = ring->next;
-        ring->next = malloc(sizeof(struct block));
-        if (ring->next != NULL && vp != NULL) {
-            if (!setjmp(env[0])) {
-                for (s=(char*)vp; s<(char*)vp+(rnd%max/N +1); ++s)
-                    *s = 1;
-                ring->next->ptr = vp;
-                ring->next->size = rnd%max/N+1;
-                ring->next->next = bp;
-                
-                bytes += ring->next->size;
-                ++(*blocks);
-            }else
-                errno = -fprintf(stderr, "malloc 'allocated' unwritable memory\n");
-        }else if (errno != ENOMEM) {
-            ring->next = bp; //restore old ring->next
-            errno = -fprintf(stderr, "malloc returned a NULL without setting errno to ENOMEM\n");
-        }
-        if (sem != NULL)
-            sem_post(sem);
+    for (d=sqrtl(limit);  limit%d != 0;  --d);
+    if (d < 2) {
+        d = 2;
+        limit += 3;
     }
-    
-    /*
-      fragmentate by QUASI-randomly re(m)allocating blocks and ring elements,
-      check for overlapping memory segments (blocks):
-    */
-    for (i=0; !errno && i<=(*blocks)*2; ++i) {
-        rnd = rand_r(&rnd);
-        vp = malloc(rnd%max/N +1);
-        if (sem != NULL)
-            sem_wait(sem);
-        if (ring->next->ptr != NULL) {
-            errno = safe_free(ring->next->ptr, "free caused a SIGABRT (pointer provided by malloc)\n");
-            bp = ring->next->next;
-            errno = safe_free(ring->next, "free caused a SIGABRT (pointer provided by malloc)\n");
-            if (!errno) {
-                ring->next = malloc(sizeof(struct block));
-                if (ring->next != NULL && vp != NULL) {
-                    if (!setjmp(env[0])) {
-                        for (s=(char*)vp; s<(char*)vp+(rnd%max/N +1); ++s)
-                            *s = 1;
-                        ring->next->ptr = vp;
-                        ring->next->size = rnd%max/N +1;
-                        ring->next->next = bp;
-                    }else
-                        errno = -fprintf(stderr, "malloc \"allocated\" unwritable memory\n");
-                    
-                    for (j=0; !errno && j<*blocks; ++j) {
-                        if (ring->next != bp && overlapping(ring->next, bp))
-                            errno = -fprintf(stderr, "malloc incorrectly allocated memory: segments overlapping\n");
-                        bp = bp->next;
-                    }
-                }else if (errno != ENOMEM) {
-                    ring->next = bp; //restore old ring->next
-                    errno = -fprintf(stderr, "malloc returned a NULL without setting errno to ENOMEM\n");
-                }
-            }
-        }
-        for (j=0; !errno && j<(int)rnd%100; ++j)
-            ring = ring->next;
-        if (sem != NULL)
-            sem_post(sem);
-    }
-    return blocks;
+    if ((vp = calloc(d, limit/d)) != NULL) {
+        free(vp);
+        return 1;
+    }else
+        return 0;
 }
-//TODO: arrays instead of lists for speed and less fragmentation interferrence
+
+//A bridge function for sigaction, that longjmp's and restores env
+static void bridge_sig_jmp(int sig)
+{
+    longjmp(env, sig);
+    return;
+}
