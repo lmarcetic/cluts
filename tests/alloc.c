@@ -224,9 +224,7 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
  **/
 static size_t posix_memalign_alignment(size_t seed)
 {
-    while( seed % sizeof(void *) != 0
-           || sqrtl(seed) != (long double)((long int)sqrtl(seed))
-    )
+    while (seed%sizeof(void*) || (seed/sizeof(void*) & seed/sizeof(void*)-1))
         ++seed;
     return seed;
 }
