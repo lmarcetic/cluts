@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <stdint.h> //PTRDIFF_MAX, SIZE_MAX
+#include <signal.h>
+#include "common/common.h"
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -100,7 +102,7 @@ int main()
             else
                 nr_blocks = max_blocks;
             nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
-            printf("(%u)", nr_blocks); //---
+            printf("(%zu)", nr_blocks); //---
             
             if (nr_blocks < mem->pages*0.9) //at least
                 err->alloc = 1;
@@ -126,8 +128,11 @@ int main()
         wait(&stat);
         if (!WIFEXITED(stat) && !err->free) {
             ++ret;
-            fprintf(stderr, "%s test quit unexpectedly (status code: %i)!\n",
-                            fun_name[i], WEXITSTATUS(stat));
+            fprintf(stderr, "%s test quit unexpectedly!", fun_name[i]);
+            if (WIFSIGNALED(stat))
+                fprintf(stderr, " Terminating ignal: %s)\n",
+                        e_name(WTERMSIG(stat))
+                );
         }else {
             ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) != 0);
             if (err->alloc)
@@ -140,9 +145,9 @@ int main()
             if (err->overlapping)
                fprintf(stderr,"%s allocated blocks that overlap\n",fun_name[i]);
             if (err->notr)
-                fprintf(stderr,"%s 'allocated' unreadable memory\n",fun_name[i]);
+               fprintf(stderr,"%s 'allocated' unreadable memory\n",fun_name[i]);
             if (err->notw)
-                fprintf(stderr,"%s 'allocated' unwritable memory\n",fun_name[i]);
+               fprintf(stderr,"%s 'allocated' unwritable memory\n",fun_name[i]);
             if (err->notsame)
                 fprintf(stderr,
                         "a byte read from %s-allocated memory does not"
@@ -193,7 +198,7 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
     size_t  i, size, nr_bytes, nr_blocks;
     char    *ptr;
     
-    srand((unsigned int)b[0].ptr);
+    srand((unsigned int) b[0].ptr);
     nr_bytes = nr_blocks = 0;
     for (i=0; i<n && nr_bytes < mem->free; ++i) {
         ptr = NULL;
@@ -203,7 +208,7 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
         else if (fun == calloc)
             ptr = calloc(1, size);
         else if (fun == posix_memalign)
-            posix_memalign((void **)&ptr, posix_memalign_alignment(i),size);
+            posix_memalign((void **)&ptr, posix_memalign_alignment(i), size);
         else if (fun == realloc)
             ptr = realloc(b[nr_blocks].ptr, size);
         else
@@ -224,7 +229,7 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
  **/
 static size_t posix_memalign_alignment(size_t seed)
 {
-    while (seed%sizeof(void*) || (seed/sizeof(void*) & seed/sizeof(void*)-1))
+    while (seed%sizeof(void*) || (seed/sizeof(void*) & (seed/sizeof(void*)-1)))
         ++seed;
     return seed;
 }
