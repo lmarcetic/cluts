@@ -7,7 +7,7 @@
 # There's ABSOLUTELY NO WARRANTY, express or implied.
 #
 
-CFLAGS = -std=c99 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -O2
+CFLAGS = -std=c99 -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -O2
 LIBS = -lpthread -lrt -lm
 SRC = $(wildcard tests/*.c) $(wildcard *.c)
 BIN = $(SRC:.c=)
