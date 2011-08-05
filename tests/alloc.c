@@ -3,9 +3,9 @@
 #include <math.h>
 #include <setjmp.h>
 #include <stdlib.h>
-#include <wait.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/wait.h>
 #include <sys/mman.h>
 #include <stdint.h> //PTRDIFF_MAX, SIZE_MAX
 #include <signal.h>
@@ -128,11 +128,9 @@ int main()
         wait(&stat);
         if (!WIFEXITED(stat) && !err->free) {
             ++ret;
-            fprintf(stderr, "%s test quit unexpectedly!", fun_name[i]);
+            fprintf(stderr, "%s test quit unexpectedly!\n", fun_name[i]);
             if (WIFSIGNALED(stat))
-                fprintf(stderr, " Terminating ignal: %s)\n",
-                        e_name(WTERMSIG(stat))
-                );
+                fprintf(stderr, "\tTerminating signal: %d\n", WTERMSIG(stat));
         }else {
             ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) != 0);
             if (err->alloc)
@@ -198,7 +196,7 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
     size_t  i, size, nr_bytes, nr_blocks;
     char    *ptr;
     
-    srand((unsigned int) b[0].ptr);
+    srand((size_t) b[0].ptr);
     nr_bytes = nr_blocks = 0;
     for (i=0; i<n && nr_bytes < mem->free; ++i) {
         ptr = NULL;
@@ -281,11 +279,11 @@ static int blocks_sort_compar(const void *v1, const void *v2)
 static int blocks_notrw(struct block *b, size_t n)
 {
     size_t i, j;
-    struct sigaction oldact, act;
+    struct sigaction
+        oldact,
+        act = {.sa_handler = bridge_sig_jmp, .sa_flags = SA_NODEFER};
     int ret = 0;
     
-    act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = SA_NODEFER;
     sigaction(SIGSEGV, &act, &oldact);
     for (i=0; i<n && !ret; ++i) {
         for (j=0; j<=3 && !ret; ++j) {
