@@ -9,7 +9,7 @@
 #include <unistd.h>   //confstr, getcwd, gethostname, readlink
 #include <iconv.h>    //iconv
 #include <time.h>     //time, gmtime
-//#include <monetary.h> //strfmon
+#include <monetary.h> //strfmon
 
 /*
  * Copyright (c) 2011 Luka Marčetić<paxcoder@gmail.com>
@@ -41,7 +41,9 @@ int main()
     FILE *stream = NULL;
     int fd;
     struct tm tm;
-    struct sigaction oldact, act;
+    struct sigaction
+        act = {.sa_handler=bridge_sig_jmp, .sa_flags=SA_NODEFER},
+        oldact[2];
     int sig;
     // numbers of those functions that depend on the temporary file:
     int ffun[] = {2, 3,8,12};
@@ -49,17 +51,14 @@ int main()
     if ((fd = mkstemp(filename)) != -1)
         stream = fdopen(fd, "w+b");
 
-    act.sa_handler = bridge_sig_jmp;
-    act.sa_flags   = SA_NODEFER;
-    sigaction(SIGABRT, &act, &oldact);
-    sigaction(SIGSEGV, &act, &oldact);
-    
     failed = 0;
     function = 1;
     do {
       err = wrong = 0;
       s = fun = NULL;
       ws = NULL;
+      sigaction(SIGABRT, &act, &oldact[0]);
+      sigaction(SIGSEGV, &act, &oldact[1]);
       if (!(sig = setjmp(env))) {
         switch(function) {
             case 1:
@@ -184,7 +183,7 @@ int main()
                     wrong = 2;
             break;
             case 10:
-                /*fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
+                fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
                 s = malloc(80);
                 size = strfmon(s, 80, "%!i", 123.0) + 1;
                 s[size-1] = '\r';
@@ -193,7 +192,7 @@ int main()
                 if (s[size-1] != '\r')
                     wrong = 1;
                 else if ((err = errno) != (err_expected = E2BIG))
-                    wrong = 2;*/
+                    wrong = 2;
             break;
             case 11:
                 fun = sreturnf("strftime(s, sizeof(s)-1, \"%Y\", tm)");
@@ -233,6 +232,8 @@ int main()
                 function = 0; //exit while
             break;
         }
+        sigaction(SIGABRT, &oldact[0], NULL);
+        sigaction(SIGSEGV, &oldact[1], NULL);
         if (stream == NULL && seq_has(function, ffun))
             wrong = -1;
         

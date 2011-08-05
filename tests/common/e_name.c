@@ -22,6 +22,8 @@ char* e_name(int error)
         strcpy(s, "ENOMEM");
     else if (error == E2BIG)
         strcpy(s, "E2BIG");
+    else if (error == ENAMETOOLONG)
+        strcpy(s, "ENAMETOOLONG");
     else {
         free(s);
         s = sreturnf("%i(%s)", error, strerror(error));

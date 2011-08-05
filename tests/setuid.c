@@ -1,4 +1,3 @@
-#define _XOPEN_SOURCE 1
 #ifndef MAXUID
     #define MAXUID 2000
 #endif
