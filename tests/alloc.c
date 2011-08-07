@@ -23,21 +23,41 @@
 /**
  ** \file
  ** tests: malloc, realloc, calloc, posix_memalign
- ** depends: sysconf, sqrtl, free, fork,wait, srand,rand, setjmp,longjmp, qsort,
+ ** depends: sysconf, sqrtl, free, fork,wait, rand, setjmp,longjmp, qsort,
  **          fprintf, memcmp,memset, open,mmap
  **/
 
 #define MB_RAM 16
 jmp_buf env;
-struct s_mem {
-    const size_t page, pages;
-    const unsigned long long free;
-} *mem;
+struct {
+    size_t
+        page,
+        prog,
+        blocks;
+} mem;
 struct block {
     char *ptr;
     size_t size;
 };
+struct s_err {
+    unsigned int
+        alloc:1,
+        overlapping:1,
+        notr:1,
+        notw:1,
+        notsame:1,
+        misaligned:1,
+        ov_size_t:1,
+        ov_ptrdiff_t:1,
+        free:1,
+        mallocfree:1,
+        rand:1,
+        limit:1,
+        no;
+} *err;
 
+#define TRY_FREE(PTR) { err->free = 0; free(PTR); err->free = 0; }
+static void* vm_limit(size_t);
 static size_t posix_memalign_alignment(size_t);
 static size_t blocks_alloc(const void *, struct block *, size_t);
 static size_t blocks_overlapping(struct block *, size_t);
@@ -46,65 +66,55 @@ static int blocks_sort_compar(const void *, const void *);
 static int block_misaligned(struct block, size_t);
 static int blocks_misaligned(struct block *, size_t);
 static int blocks_notrw(struct block *, size_t);
-static int calloc_overflows(long int);
+static int calloc_overflows(long long int);
 static void bridge_sig_jmp(int);
 
 int main()
 {
-    //encapsulate some memory info in a struct:
-    mem = &(struct s_mem){
-        //size of one page in bytes:
-        .page = sysconf(_SC_PAGE_SIZE),
-        //number of available pages, free memory in bytes:
-        #ifdef _SC_AVPHYS_PAGES
-            .pages = sysconf(_SC_AVPHYS_PAGES),
-            .free  = sysconf(_SC_PAGE_SIZE) * sysconf(_SC_AVPHYS_PAGES),
-        #else
-            .pages = (MB_RAM*1024*1024/mem->page), ///<ehm
-            .free  = sysconf(_SC_PAGE_SIZE) * (MB_RAM*1024*1024/mem->page),
-        #endif
-    };
-    struct s_err {
-        unsigned int
-            alloc:1,
-            overlapping:1,
-            notr:1,
-            notw:1,
-            notsame:1,
-            misaligned:1,
-            ov_size_t:1,
-            ov_ptrdiff_t:1,
-            free:1;
-    } *err; //a bitfield to indicate errors
-    const size_t max_blocks  = mem->pages*1.6; //should alloc >= mem->free bytes
-    struct block *b          = malloc(max_blocks * sizeof(struct block));
+    struct block *b;
+    size_t       i, j, nr_blocks;
+    int          ret, stat;
     const void   *fun[]      = { malloc,  realloc,  calloc,  posix_memalign };
     const char   *fun_name[] = {"malloc","realloc","calloc","posix_memalign"};
     const int    fd          = open("/dev/zero", O_RDWR);
-    size_t       nr_blocks;
-    int          ret, stat;
-    unsigned int i, j;
+    char         *s;
+    
+    mem.page   = sysconf(_SC_PAGE_SIZE);
+    mem.blocks = 1000;                  //max. nr. of blocks to be generated
+    mem.prog   = mem.blocks*mem.page;   //memory reserved for dynamic allocation
+    b = malloc(mem.blocks*sizeof(struct block));
     err = mmap(NULL,sizeof(struct s_err),PROT_READ|PROT_WRITE, MAP_SHARED,fd,0);
     
     ret = 0;
     for (i=0; i<sizeof(fun)/sizeof(*fun); ++i) {
         memset(err, 0, sizeof(*err)); //all zeros = no errors
-        //if (!fork()){
-            if (fun[i]==calloc) {
+        if (!fork()){
+            if (fun[i] == calloc) {
                 if(calloc_overflows(SIZE_MAX))
                     err->ov_size_t = 1;
                 if(calloc_overflows(PTRDIFF_MAX))
                     err->ov_ptrdiff_t = 1;
             }
             
-            if (fun[i] == realloc)
-                nr_blocks = blocks_alloc(malloc,  b, max_blocks);
-            else
-                nr_blocks = max_blocks;
-            nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
-            printf("(%zu)", nr_blocks); //---
+            if (vm_limit(mem.prog) == MAP_FAILED) {
+                err->limit = 1;
+                free (b);
+                return 0; //!!!
+            }
             
-            if (nr_blocks < mem->pages*0.9) //at least
+            if (fun[i] == realloc) {
+                nr_blocks = blocks_alloc(malloc, b, mem.blocks);
+                err->mallocfree = 1;
+                for(j = nr_blocks; nr_blocks >= j-5; --nr_blocks)
+                    free(b[nr_blocks-1].ptr); //free some for subsequent realloc
+                err->mallocfree = 0;
+            }
+            else
+                nr_blocks = mem.blocks;
+            nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
+            printf("%zu: %zu\n", i, nr_blocks); //---
+            
+            if (nr_blocks < 10) //an imposed minimum
                 err->alloc = 1;
             else {
                 if (fun[i]==posix_memalign && blocks_misaligned(b, nr_blocks))
@@ -117,13 +127,12 @@ int main()
                     case 2: err->notr    = 1; break;
                     case 3: err->notsame = 1; break;
                 } 
-                err->free = 1;
-                for(j=0; j<nr_blocks; ++j)
-                    free(b[j].ptr);
-                err->free = 0;
             }
+            for(j=0; j<nr_blocks; ++j)
+                TRY_FREE(b[j].ptr);
+            free(b);
             return 0;
-        /*}*/fork();//---
+        }
         
         wait(&stat);
         if (!WIFEXITED(stat) && !err->free) {
@@ -133,11 +142,25 @@ int main()
                 fprintf(stderr, "\tTerminating signal: %d\n", WTERMSIG(stat));
         }else {
             ret += (memcmp(err,(struct s_err []){{.free=0}},sizeof(*err)) != 0);
+            if (err->rand)
+                fprintf(stderr,
+                       "An unlikely situation occurred while generating size"
+                       " arguments for %s: rand()%%(%zu)+1 on average resulted"
+                       " in values no greater than 10%% of the possible maximum"
+                       " value. Subsequent errors may result from this.\n",
+                       fun_name[i],
+                       mem.page*10
+                );
+            if (err->limit)
+                fprintf(stderr,
+                        "Initial virtual memory allocation failed."
+                        "%s tests will not run\n", fun_name[i]
+                );
             if (err->alloc)
                 fprintf(
                     stderr,
-                    "%s failed to allocate sufficient amount of"
-                    " memory to run the test\n",
+                    "%s failed to allocate sufficient amount of memory required"
+                    " for the test\n",
                     fun_name[i]
                 );
             if (err->overlapping)
@@ -155,6 +178,13 @@ int main()
             if (err->misaligned)
                 fprintf(
                     stderr, "%s allocated at least one misaligned block\n",
+                    fun_name[i]
+                );
+            if (err->mallocfree)
+                fprintf(
+                    stderr,
+                    "%s can't be tested: free() failed to free memory allocated"
+                    " by malloc(), which was required for the test to run\n",
                     fun_name[i]
                 );
             if (err->free)
@@ -178,46 +208,110 @@ int main()
                     " two pointers from the opposite ends of the block\n",
                     fun_name[i]
                 );
+            if (err->no) {
+                fprintf(stderr, "%s test set errno=%s\n",
+                        fun_name[i], s = e_name(err->no));
+                free(s);
+            }
         }
     }
     
+    free(b);
     return ret;
 }
 
 /**
- ** (re)Allocates a number of blocks of random sizes, saves info about them
+ ** Allocates all of remaining virtual memory, unallocating only the limit:
+ ** \limit a desired number of free bytes upon returning from the function
+ ** \returns a pointer to free memory of specified size,or MAP_FAILED on failure
+ **/
+static void* vm_limit(size_t limit) {
+    const int fd = open("/dev/zero", O_RDWR);
+    size_t i,j,last; 
+    void *saved, *vp=NULL;
+    
+    saved = mmap(NULL, limit, PROT_NONE, MAP_PRIVATE, fd, 0);
+    if (saved != MAP_FAILED) {
+        //repeated mmaps of binary-search-determined sizes:
+        do {
+            last = 0;
+            for (i=j=SIZE_MAX/2+1;  i>0;  i/=2) {
+                if ((vp=mmap(NULL, j,PROT_NONE,MAP_PRIVATE,fd,0)) == MAP_FAILED)
+                    j -= i/2;
+                else {
+                    munmap(vp, (last=j));
+                    j += i/2;
+                }
+            }
+        }while(last && mmap(NULL, last,PROT_NONE,MAP_PRIVATE,fd,0)!=MAP_FAILED);
+        
+        munmap(saved, limit);
+        if (last)
+            saved = MAP_FAILED;
+    }
+    return saved;
+}
+
+/**
+ ** (re)Allocates blocks of random sizes to fill memory, saves info about them
+ ** NOTE: Function not stand-alone, requires initialized *err and mem structures
  ** \param fun a pointer to the function to call to (re)allocate the blocks
  ** \param b a pointer to a struct block array to be filled with blocks info
- ** \param n a maximum number of blocks<=max.nr. of elements the array can store
+ ** \param n for realloc: a number of blocks that are allocated (<=mem.blocks)
  ** \returns the number of blocks successfully allocated
  **/
 static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
 {
-    size_t  i, size, nr_bytes, nr_blocks;
-    char    *ptr;
+    long int rndm;
+    size_t  i, size, nr_blocks;
+    char *ptr;
+    int error;
     
-    srand((size_t) b[0].ptr);
-    nr_bytes = nr_blocks = 0;
-    for (i=0; i<n && nr_bytes < mem->free; ++i) {
+    nr_blocks = error = 0;
+    for (i=0; !error &&  i<mem.blocks; ++i) {
         ptr = NULL;
-        size = rand() % mem->page*2;
+        rndm = random(); 
+        size = rndm % (mem.page*10) +1; //see error report for err->rand
+        
         if (fun == malloc)
             ptr = malloc(size);
         else if (fun == calloc)
             ptr = calloc(1, size);
         else if (fun == posix_memalign)
-            posix_memalign((void **)&ptr, posix_memalign_alignment(i), size);
-        else if (fun == realloc)
-            ptr = realloc(b[nr_blocks].ptr, size);
-        else
-            return 0;
-        if (ptr != NULL) {
-            b[nr_blocks].ptr  = ptr;
-            b[nr_blocks].size = size;
-            ++nr_blocks;
-            nr_bytes += size;
+            error=posix_memalign((void**)&ptr,posix_memalign_alignment(i),size);
+        else if (fun == realloc) {
+            if (i<n)
+                ptr = realloc(b[nr_blocks].ptr, size);
+            else
+                ptr = malloc(size);
+        }
+        
+        if (ptr != NULL && (fun != posix_memalign || error == 0)) {
+            if (fun != realloc && rndm % 10) {
+                TRY_FREE(ptr);
+                --i;
+            }else{
+                b[nr_blocks].ptr  = ptr;
+                b[nr_blocks].size = size;
+                ++nr_blocks;
+            }
+        }else{
+            if (fun != posix_memalign)
+               error = errno;
+            --i;
         }
     }
+    if (error != ENOMEM) {
+        if (i==mem.blocks)
+            err->rand = 1;
+        else
+            err->no = (unsigned int)error;
+        
+        for (i=0; i<nr_blocks; ++i)
+            TRY_FREE(b[i].ptr);
+        nr_blocks = 0; //will set err->alloc in main()
+    }
+    printf("%zu\n", nr_blocks);
     return nr_blocks;
 }
 /**
@@ -227,8 +321,9 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
  **/
 static size_t posix_memalign_alignment(size_t seed)
 {
-    while (seed%sizeof(void*) || (seed/sizeof(void*) & (seed/sizeof(void*)-1)))
+    do{
         ++seed;
+    }while(seed%sizeof(void*) || (seed/sizeof(void*) & (seed/sizeof(void*)-1)));
     return seed;
 }
 
@@ -278,7 +373,7 @@ static int blocks_sort_compar(const void *v1, const void *v2)
  **/
 static int blocks_notrw(struct block *b, size_t n)
 {
-    size_t i, j;
+    size_t i;
     struct sigaction
         oldact,
         act = {.sa_handler = bridge_sig_jmp, .sa_flags = SA_NODEFER};
@@ -286,17 +381,20 @@ static int blocks_notrw(struct block *b, size_t n)
     
     sigaction(SIGSEGV, &act, &oldact);
     for (i=0; i<n && !ret; ++i) {
-        for (j=0; j<=3 && !ret; ++j) {
+        if(!setjmp(env)) {
+            b[i].ptr[0] = '\r';
+            b[i].ptr[b[i].size/2] = '\r';
+            b[i].ptr[b[i].size-1] = '\r';
             if(!setjmp(env)) {
-                b[i].ptr[j*b[i].size] = '\r';
-                if(!setjmp(env)) {
-                    if(b[i].ptr[j*b[i].size] != '\r')
-                        ret = 3;
-                }else
-                    ret = 2;
+                if(b[i].ptr[0] != '\r'
+                   || b[i].ptr[b[i].size/2] != '\r'
+                   || b[i].ptr[b[i].size-1] != '\r'
+                )
+                    ret = 3;
             }else
-                ret = 1;
-        }
+                ret = 2;
+        }else
+            ret = 1;
     }
     sigaction(SIGSEGV, &oldact, NULL);
     return ret;
@@ -335,20 +433,13 @@ static int blocks_misaligned(struct block *b, size_t n)
  ** \param limit when incremented by 1, a value for which allocation should fail
  ** \returns 1 if calloc returns a non-NULL (incorrect behavior), otherwise 0
  **/
-static int calloc_overflows(long int limit)//long>size_t for this/sqrtl to work!
+static int calloc_overflows(long long int limit)
 {
-    long int d;
     void *vp;
-    for (d = sqrtl(limit);  limit%d != 0;  --d);
-    if (d < 2) {
-        d = 2;
-        ++limit;
-    }
-    if ((vp = calloc(d+1 , limit/d)) != NULL) {
-        free(vp);
-        return 1;
-    }else
-        return 0;
+    
+    vp = calloc(8, limit/8 + 1);
+    free(vp);
+    return (vp == NULL);
 }
 
 //A bridge function for sigaction, that longjmp's and restores env
