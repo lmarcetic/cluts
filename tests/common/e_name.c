@@ -1,32 +1,37 @@
 #include <errno.h>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-//\file depends: strcpy, strerror, malloc, [sreturnf]
+//\file depends: strerror, [sreturnf]
 /**
  ** \returns a string with a human-readable error name
  ** \param error - errno to be "stringized"
  **/
 char* e_name(int error)
 {
-    char *s = malloc(7);
+    char *s;
     
-    if (error == -1)
-        strcpy(s, "<any>");
-    else if (error == EINVAL)
-        strcpy(s, "EINVAL");
-    else if (error == ERANGE)
-        strcpy(s, "ERANGE");
-    else if (error == ENOMEM)
-        strcpy(s, "ENOMEM");
-    else if (error == E2BIG)
-        strcpy(s, "E2BIG");
-    else if (error == ENAMETOOLONG)
-        strcpy(s, "ENAMETOOLONG");
-    else {
-        free(s);
-        s = sreturnf("%i(%s)", error, strerror(error));
+    switch (error) {
+        case -1:
+            s = sreturnf("<any>");
+        break;
+        case EINVAL:
+            s = sreturnf("EINVAL");
+        break;
+        case ERANGE:
+            s = sreturnf("ERANGE");
+        break;
+        case ENOMEM:
+            s = sreturnf("ENOMEM");
+        break;
+        case E2BIG:
+            s = sreturnf("E2BIG");
+        break;
+        case ENAMETOOLONG:
+            s = sreturnf("ENAMETOOLONG");
+        break;
+        default:
+            s = sreturnf("%i(%s)", error, strerror(error));
+        break;
     }
     return s;
 }
