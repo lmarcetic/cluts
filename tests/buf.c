@@ -34,7 +34,7 @@ void bridge_sig_jmp(int sig);
 int main()
 {
     int function, wrong, failed, err, err_expected;
-    char *s, *fun, filename[] = "/tmp/clutsXXXXXX";
+    char *s, *fun, *tmp, filename[] = "/tmp/clutsXXXXXX";
     wchar_t *ws;
     size_t size;
     iconv_t cd;
@@ -55,7 +55,7 @@ int main()
     function = 1;
     do {
       err = wrong = 0;
-      s = fun = NULL;
+      s = fun = tmp = NULL;
       ws = NULL;
       sigaction(SIGABRT, &act, &oldact[0]);
       sigaction(SIGSEGV, &act, &oldact[1]);
@@ -153,19 +153,20 @@ int main()
             break;
             case 8:
                 fun=sreturnf("readlink(\"%s.sym\", s, sizeof(s)-1)", filename);
+                tmp = sreturnf("%s.sym", filename);
                 if (stream == NULL) {
                     wrong = -1;
                     break;
                 }
-                else if (symlink(filename, sreturnf("%s.sym", filename))) {
+                else if (symlink(filename, tmp)) {
                     wrong = 3;
                     break;
                 }
                 s = malloc(PATH_MAX);
-                size = readlink(sreturnf("%s.sym", filename), s, PATH_MAX);
+                size = readlink(tmp, s, PATH_MAX);
                 s[size-1] = '\r';
                 
-                readlink(sreturnf("%s.sym", filename), s, size-1);
+                readlink(tmp, s, size-1);
                 if (s[size-1] != '\r')
                     wrong = 1;
             break;
@@ -257,6 +258,7 @@ int main()
         free(ws);
         free(fun);
         free(s);
+        free(tmp);
       }else if (sig == SIGABRT) {
         fprintf(
             stderr,
