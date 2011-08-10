@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <math.h>
 #include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,12 +21,15 @@
 
 /**
  ** \file
+ ** Tests that blocks allocated by various functions do not overlap, that they 
+ ** are successfully writable, and that they are freeable by free().
+ ** In case of posix_memalign, it allso tests that blocks are correctly aligned,
+ ** and in the case of calloc, that allocation of huge values results in failure
  ** tests: malloc, realloc, calloc, posix_memalign
- ** depends: sysconf, sqrtl, free, fork,wait, rand, setjmp,longjmp, qsort,
- **          fprintf, memcmp,memset, open,mmap
+ ** depends: sysconf, free, fork,wait, rand, setjmp,longjmp, qsort, fprintf
+ **          memcmp,memset, open,mmap
  **/
 
-#define MB_RAM 16
 jmp_buf env;
 struct {
     size_t
@@ -66,7 +68,7 @@ static int blocks_sort_compar(const void *, const void *);
 static int block_misaligned(struct block, size_t);
 static int blocks_misaligned(struct block *, size_t);
 static int blocks_notrw(struct block *, size_t);
-static int calloc_overflows(long long int);
+static int calloc_overflows(long long unsigned int);
 static void bridge_sig_jmp(int);
 
 int main()
@@ -98,7 +100,7 @@ int main()
             
             if (vm_limit(mem.prog) == MAP_FAILED) {
                 err->limit = 1;
-                free (b);
+                free(b);
                 return 0; //!!!
             }
             
@@ -196,7 +198,7 @@ int main()
                 fprintf(
                     stderr,
                     "%s tried to allocate more than SIZE_MAX bytes, which"
-                    " means the block's size would no be representable"
+                    " means the block's size would not be representable"
                     " by a size_t type\n",
                     fun_name[i]
                 );
@@ -221,7 +223,7 @@ int main()
 }
 
 /**
- ** Allocates all of remaining virtual memory, unallocating only the limit:
+ ** Allocates all of remaining virtual memory, leaving only the limit:
  ** \limit a desired number of free bytes upon returning from the function
  ** \returns a pointer to free memory of specified size,or MAP_FAILED on failure
  **/
@@ -230,7 +232,7 @@ static void* vm_limit(size_t limit) {
     size_t i,j,last; 
     void *saved, *vp=NULL;
     
-    saved = mmap(NULL, limit, PROT_NONE, MAP_PRIVATE, fd, 0);
+    saved = malloc(limit);
     if (saved != MAP_FAILED) {
         //repeated mmaps of binary-search-determined sizes:
         do {
@@ -245,7 +247,7 @@ static void* vm_limit(size_t limit) {
             }
         }while(last && mmap(NULL, last,PROT_NONE,MAP_PRIVATE,fd,0)!=MAP_FAILED);
         
-        munmap(saved, limit);
+        free(saved);
         if (last)
             saved = MAP_FAILED;
     }
@@ -311,7 +313,6 @@ static size_t blocks_alloc(const void *fun, struct block *b, size_t n)
             TRY_FREE(b[i].ptr);
         nr_blocks = 0; //will set err->alloc in main()
     }
-    printf("%zu\n", nr_blocks);
     return nr_blocks;
 }
 /**
@@ -367,9 +368,9 @@ static int blocks_sort_compar(const void *v1, const void *v2)
  ** \param n the number of array elements to check
  ** \returns
  **         0 - if all blocks are readable and writable
- **         1 - if one of the blocks isn't writable
- **         2 - if one of the blocks isn't readable
- **         3 - if a byte that was read didn't match a byte that was written
+ **         1 - if at least one of the blocks isn't writable
+ **         2 - if at least one of the blocks isn't readable
+ **         3 - if a byte read didn't match a byte previously written
  **/
 static int blocks_notrw(struct block *b, size_t n)
 {
@@ -380,7 +381,7 @@ static int blocks_notrw(struct block *b, size_t n)
     int ret = 0;
     
     sigaction(SIGSEGV, &act, &oldact);
-    for (i=0; i<n && !ret; ++i) {
+    for (i=0; !ret && i<n; ++i) {
         if(!setjmp(env)) {
             b[i].ptr[0] = '\r';
             b[i].ptr[b[i].size/2] = '\r';
@@ -433,13 +434,13 @@ static int blocks_misaligned(struct block *b, size_t n)
  ** \param limit when incremented by 1, a value for which allocation should fail
  ** \returns 1 if calloc returns a non-NULL (incorrect behavior), otherwise 0
  **/
-static int calloc_overflows(long long int limit)
+static int calloc_overflows(long long unsigned int limit)
 {
     void *vp;
     
     vp = calloc(8, limit/8 + 1);
     free(vp);
-    return (vp == NULL);
+    return (vp != NULL);
 }
 
 //A bridge function for sigaction, that longjmp's and restores env
