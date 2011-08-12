@@ -59,7 +59,7 @@ struct s_err {
 } *err;
 
 #define TRY_FREE(PTR) { err->free = 0; free(PTR); err->free = 0; }
-static void* vm_limit(size_t);
+static int vm_limit(const size_t);
 static size_t posix_memalign_alignment(size_t);
 static size_t blocks_alloc(const void *, struct block *, size_t);
 static size_t blocks_overlapping(struct block *, size_t);
@@ -98,7 +98,7 @@ int main()
                     err->ov_ptrdiff_t = 1;
             }
             
-            if (vm_limit(mem.prog) == MAP_FAILED) {
+            if (!vm_limit(mem.prog)) {
                 err->limit = 1;
                 free(b);
                 return 0; //!!!
@@ -106,14 +106,17 @@ int main()
             
             if (fun[i] == realloc) {
                 nr_blocks = blocks_alloc(malloc, b, mem.blocks);
-                err->mallocfree = 1;
-                for(j = nr_blocks; nr_blocks >= j-5; --nr_blocks)
-                    free(b[nr_blocks-1].ptr); //free some for subsequent realloc
-                err->mallocfree = 0;
+                if (nr_blocks > 5) {
+                    //free some for subsequent realloc
+                    err->mallocfree = 1;
+                    for(j = nr_blocks; nr_blocks >= j-5; --nr_blocks)
+                        free(b[nr_blocks-1].ptr);
+                    err->mallocfree = 0;
+                    nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
+                }
             }
             else
-                nr_blocks = mem.blocks;
-            nr_blocks = blocks_alloc(fun[i], b, nr_blocks);
+                nr_blocks = blocks_alloc(fun[i], b, mem.blocks);
             printf("%zu: %zu\n", i, nr_blocks); //---
             
             if (nr_blocks < 10) //an imposed minimum
@@ -223,18 +226,24 @@ int main()
 }
 
 /**
- ** Allocates all of remaining virtual memory, leaving only the limit:
+ ** Allocates all remaining virtual memory, leaving limit both for brk and mmap
  ** \limit a desired number of free bytes upon returning from the function
- ** \returns a pointer to free memory of specified size,or MAP_FAILED on failure
+ ** \returns 1 on success, 0 on failure
  **/
-static void* vm_limit(size_t limit) {
+static int vm_limit(const size_t limit) {
     const int fd = open("/dev/zero", O_RDWR);
     size_t i,j,last; 
-    void *saved, *vp=NULL;
+    void *mmapd, *vp;
+    void **brkd, **vpp;
     
-    saved = malloc(limit);
-    if (saved != MAP_FAILED) {
-        //repeated mmaps of binary-search-determined sizes:
+    //allocate mmap area of size limit:
+    mmapd = mmap(NULL, limit, PROT_READ|PROT_WRITE, MAP_PRIVATE, fd, 0);
+    //allocate brk area of size limit:
+    brkd = (vpp = malloc(mem.page));
+    for(i=0;  vpp!=NULL && (i+=mem.page)<limit;  vpp = *vpp = malloc(mem.page));
+    
+    if (mmapd != MAP_FAILED && i>=limit) {
+        //repeated mmaps of binary-search-determined sizes to fill everything:
         do {
             last = 0;
             for (i=j=SIZE_MAX/2+1;  i>0;  i/=2) {
@@ -247,11 +256,17 @@ static void* vm_limit(size_t limit) {
             }
         }while(last && mmap(NULL, last,PROT_NONE,MAP_PRIVATE,fd,0)!=MAP_FAILED);
         
-        free(saved);
-        if (last)
-            saved = MAP_FAILED;
+        //free that mmap area:
+        munmap(mmapd, limit);
+        //free that brk area:
+        for(i=0; i<limit; i+=mem.page) {
+            vpp = *brkd;
+            free(brkd);
+            brkd = vpp;
+        }
     }
-    return saved;
+    
+    return (mmapd != MAP_FAILED && i>=limit && !last);
 }
 
 /**
