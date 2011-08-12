@@ -71,7 +71,7 @@ static String *real_addslashes(const String *S,String *newS,unsigned int index)
             newS->s[cur] = S->s[index];
     } else {
         newS->s = malloc(newS->size+1);
-        newS->s[newS->size+1] = '\0';
+        newS->s[newS->size] = '\0';
     }
     return newS;
 }
@@ -85,7 +85,7 @@ String Strcpy(String S)
     newS.s = malloc((newS.size = S.size)+1);
     for (i=0; i<S.size; ++i)
         newS.s[i] = S.s[i];
-    newS.s[newS.size+1] = '\0';
+    newS.s[newS.size] = '\0';
     
     return newS;
 }
