@@ -29,6 +29,9 @@ char* e_name(int error)
         case ENAMETOOLONG:
             s = sreturnf("ENAMETOOLONG");
         break;
+        case EINTR:
+            s = sreturnf("EINTR");
+        break;
         default:
             s = sreturnf("%i(%s)", error, strerror(error));
         break;
