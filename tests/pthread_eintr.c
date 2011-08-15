@@ -67,9 +67,11 @@ static int wrap_pthread_once(pthread_once_t *once_control,
 static int wrap_pthread_setspecific(pthread_key_t key, const void *value);
 static int wrap_pthread_key_delete(pthread_key_t key);
 static int wrap_pthread_join(pthread_t thread, void **value_ptr);
+#ifndef GLIBC
 static int wrap_pthread_atfork(void (*prepare)(void),
                                void (*parent)(void),
                                void (*child)(void));
+#endif
 static int wrap_pthread_sigmask(int how,
                                 const sigset_t *restrict set,
                                 sigset_t *restrict oset);
@@ -159,9 +161,11 @@ int main()
                 case 5:
                     err = wrap_pthread_join(tid, NULL);
                 break;
+                #ifndef GLIBC
                 case 6:
                     err = wrap_pthread_atfork(NULL, NULL, NULL);
                 break;
+                #endif
                 case 7:
                     err = wrap_pthread_sigmask(SIG_UNBLOCK, NULL, NULL);
                 break;
@@ -379,6 +383,7 @@ static int wrap_pthread_join(pthread_t thread, void **value_ptr)
         err = pthread_join(thread, value_ptr);
     WRAP_END
 }
+#ifndef GLIBC
 static int wrap_pthread_atfork(void (*prepare)(void),
                                void (*parent)(void),
                                void (*child)(void))
@@ -388,6 +393,7 @@ static int wrap_pthread_atfork(void (*prepare)(void),
             err = pthread_atfork(prepare, parent, child);
     WRAP_END
 }
+#endif
 static int wrap_pthread_sigmask(int how,
                                 const sigset_t *restrict set,
                                 sigset_t *restrict oset)

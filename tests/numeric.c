@@ -21,6 +21,12 @@
 
 /**
  ** \file
+ ** Tests [wcs|str]to* functions' and sscanf's return values when given
+ ** corner-case arguments, as well as whether they set correct errno values
+ ** tests: strtoumax, strtoimax, strtol, strtoll,strtoul,strtoull,strtof,strtod,
+ **        strtold,wcstoumax,wcstoimax,wcstol,wcstoll,wcstoul,wcstoull,wcstof,
+ **        wcstod,wcstold,sscanfumax,sscanfimax,sscanfl,sscanfll,sscanful,
+ **        sscanfull, sscanff,sscanfd,sscanfld,sscanfo,sscanfx
  ** depends: setlocale, malloc, free, fprintf, sprintf,
  **          strcpy, wcstombs, mbstowcs, wcslen
  **/
@@ -391,7 +397,7 @@ static int test_function(const int function_nr, const int base,
     wcstombs(nptr, wnptr, wnptr_size);
     wchar_t *wendptr;
     size_t off, endptr_offset;
-    int ret, sscanf_return;
+    int ret=0, sscanf_return;
     
     errno = err = wrong = 0;
     switch (function_nr)
@@ -499,12 +505,16 @@ static int test_function(const int function_nr, const int base,
 			}
         break;
         case fnr_strtof:
+        #ifndef MUSL
         case fnr_wcstof:
+        #endif
         case fnr_sscanff:
             if (function_nr == fnr_strtof)
                 rval.f = strtof(nptr, &endptr);
+            #ifndef MUSL
             else if (function_nr == fnr_wcstof)
                 rval.f = wcstof(wnptr, &wendptr);
+            #endif
             else
                 ret = sscanf(nptr, "%f", &rval.f);
             err = errno;
@@ -516,12 +526,16 @@ static int test_function(const int function_nr, const int base,
 			}
         break;
         case fnr_strtod:
+        #ifndef MUSL
         case fnr_wcstod:
+        #endif
         case fnr_sscanfd:
             if (function_nr == fnr_strtod)
                 rval.d = strtod(nptr, &endptr);
+            #ifndef MUSL
             else if (function_nr == fnr_wcstod)
                 rval.d = wcstod(wnptr, &wendptr);
+            #endif
             else
                 ret = sscanf(nptr, "%lf", &rval.d);
             err = errno;
@@ -533,12 +547,16 @@ static int test_function(const int function_nr, const int base,
 			}
         break;
         case fnr_strtold:
+        #ifndef MUSL
         case fnr_wcstold:
+        #endif
         case fnr_sscanfld:
             if (function_nr == fnr_strtold)
                 rval.ld = strtold(nptr, &endptr);
+            #ifndef MUSL
             else if (function_nr == fnr_wcstold)
                 rval.ld = wcstold(wnptr, &wendptr);
+            #endif
             else
                 ret = sscanf(nptr, "%Lf", &rval.ld);
             err = errno;
@@ -568,12 +586,13 @@ static int test_function(const int function_nr, const int base,
 			}
         break;
         default:
-            fprintf(stdout, "???%i???\n", function_nr);//---
-            return 0;
+            wrong = -1;
         break;
     }
     
-    if (wrong) {
+    if (wrong == -1)
+        ;//missing function
+    else if (wrong) {
         s = e_name(error);
         if (!seq_has(function_nr, f_sscanf)) {
             fprintf(stderr, "%s(\"%ls\", &endptr", f_names[function_nr],wnptr);

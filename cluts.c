@@ -67,5 +67,6 @@ int main(int argc, char *argv[])
     }
     
     printf("\nTest collections passed: %d/%d\n", all-failed, all);
+    (void)argc;
     return 0;
 }

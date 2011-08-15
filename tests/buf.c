@@ -44,7 +44,9 @@ static int wrap_gethostname(char *name, size_t namelen);
 static int wrap_mbstowcs(wchar_t *pwcs, char *s, size_t n);
 static int wrap_snprintf(char *s, size_t n, char *format/*, ...*/);
 static int wrap_readlink(char *path, char *buf, size_t bufsize);
-//static int wrap_strfmon(char *s, size_t maxsize, char *format/*,...*/, float F);
+#ifndef MUSL
+static int wrap_strfmon(char *s, size_t maxsize, char *format/*,...*/, float F);
+#endif
 static int wrap_strftime(char *s, size_t maxsize,
                          char *format, struct tm *timeptr);
 static int wrap_wcstombs(char *s, wchar_t *pwcs, size_t n);
@@ -236,7 +238,8 @@ int main()
                     wrong = 3;
             break;
             case 10:
-                /*fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
+                #ifndef MUSL
+                fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
                 s = malloc(80);
                 size = strfmon(s, 80, "%!i", 123.0) + 1;
                 free(s); s = NULL;
@@ -252,7 +255,10 @@ int main()
                 else if (s[size-1] != '\r')
                     wrong = 2;
                 else if (err != (err_expected = E2BIG))
-                    wrong = 3;*/
+                    wrong = 3;
+                #else
+                wrong = -3;
+                #endif
             break;
             case 11:
                 fun = sreturnf("strftime(s, sizeof(s)-1, \"%Y\", tm)");
@@ -312,7 +318,9 @@ int main()
 
         if (wrong) {
             ++failed;
-            if (wrong == -2)
+            if (wrong == -3)
+                fprintf(stderr, "%s and/or its dependencies missing!\n", fun);
+            else if (wrong == -2)
                 fprintf(
                     stderr,
                     "%s could not be tested, because a preceeding call to the"
@@ -480,8 +488,9 @@ static int wrap_readlink(char *path, char *buf, size_t bufsize)
         sigaction(SIGSEGV, &oldact[0], NULL);
         return err;
 }
-//static int wrap_strfmon(char *s, size_t maxsize, char *format/*, ...*/, float F)
-/*{
+#ifndef MUSL
+static int wrap_strfmon(char *s, size_t maxsize, char *format/*, ...*/, float F)
+{
         int err = 0;
         sigaction(SIGSEGV, &act, &oldact[0]);
         if(!setjmp(env)) {
@@ -491,7 +500,8 @@ static int wrap_readlink(char *path, char *buf, size_t bufsize)
             err = -1;
         sigaction(SIGSEGV, &oldact[0], NULL);
         return err;
-}*/
+}
+#endif
 static int wrap_strftime(char *s,size_t maxsize,char *format,struct tm *timeptr)
 {
         int err = 0;
