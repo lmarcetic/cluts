@@ -28,7 +28,10 @@
  ** \file
  ** Tests that EINTR isn't returned by interrupted pthread_* functions for which
  ** this is a specified behavior
- ** tests: pthread_create, 
+ ** tests: pthread_create, pthread_cancel, pthread_once, pthread_setspecific,
+ ** pthread_key_delete, pthread_join, pthread_atfork, pthread_sigmask,
+ ** pthread_setschedprio, pthread_setconcurrency, pthread_detach,
+ ** pthread_key_create pthread_rwlock_unlock, pthread_kill
  ** depends: open,pipe,close, mmap, sigaction, kill,waitpid,nanosleep, fprintf,
  **          pause, pthread_cleanup_push, pthread_cleanup_pop, setjmp,longjmp
  **          sched_getscheduler,sched_get_priority_min,pthread_setschedprio,
