@@ -238,8 +238,8 @@ int main()
                     wrong = 3;
             break;
             case 10:
-                #ifndef MUSL
                 fun = sreturnf("strfmon(s, sizeof(s)-1, \"%%!i\", 123.0)");
+                #ifndef MUSL
                 s = malloc(80);
                 size = strfmon(s, 80, "%!i", 123.0) + 1;
                 free(s); s = NULL;
