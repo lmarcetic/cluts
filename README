@@ -1,7 +1,41 @@
-C Library Unit Test Suite
-SUSv4 compliance tests for the standard C library
+                         C Library Unit Test Suite
+             -SUSv4 compliance tests for the standard C library-
 
-Install:
-	make
-Run:
-	./cluts
+
+Installing and running
+
+  Install all:
+      make help #this will tell you how#
+  Run all:
+	  ./cluts
+  Run a specific test collection:
+      ./tests/<name>
+
+
+Interpreting the results
+
+  For each test collection it executes, cluts will print the name of the
+  collection to stdout. Any problems with the execution will be reported.
+  
+  Each test collection outputs only error messages (missing functions, incorrect
+  behavior and other failures) to stderr in 1-2 rows for each test. The width
+  of these may be large (over 80 chars). For this and other reasons, you might
+  want to redirect errors to a file, for example:
+      ./cluts 2> errors.txt
+  
+  Prior to exiting, cluts will brief you on the overall number of failed tests
+  and test collections. The former may serve to a standard C library developer
+  as a way of keeping track of compliance progress. Make sure you don't regard
+  either as a benchmark score: The number of tests varies greatly from one test
+  collection to the other, and while one test might check a single property of
+  a function, another one might test several.
+
+
+Writing new test collections
+
+  1.  Write a standard C program that preforms one or more tests, have it test 
+      the functions, and let its main() return the number of failed tests
+   1b. You may want to describe errors - make sure they're printed to stderr
+   1c. Tools in tests/common/ may be of some use
+  2.  Place (only) the main .c source file in the test collections root (tests/)
+  3.  That's it! Calling make will build the test, and running cluts will run it
